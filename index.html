@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LivingNMA — Living Network Meta-Analysis Engine</title>
+<meta property="og:title" content="LivingNMA — Living Network Meta-Analysis">
+<meta property="og:description" content="Frequentist NMA with consistency checks, P-scores, league table, network graph. Living update support.">
+<style>
+:root{--bg:#0a0e17;--surface:#131926;--surface2:#1a2236;--border:#2a3450;--text:#e2e8f0;--text2:#94a3b8;--accent:#10b981;--accent2:#34d399;--green:#22c55e;--red:#ef4444;--amber:#f59e0b;--cyan:#06b6d4;--indigo:#6366f1;--radius:8px}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.6}
+.container{max-width:1400px;margin:0 auto;padding:20px}
+header{text-align:center;padding:30px 0 20px;border-bottom:1px solid var(--border);margin-bottom:24px}
+header h1{font-size:2rem;background:linear-gradient(135deg,var(--accent),var(--cyan));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+header p{color:var(--text2);margin-top:6px;font-size:0.95rem}
+.tabs{display:flex;gap:4px;margin-bottom:20px;flex-wrap:wrap}
+.tab{padding:10px 20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;color:var(--text2);transition:all 0.2s;font-size:0.9rem}
+.tab:hover{border-color:var(--accent)}.tab.active{background:var(--accent);color:white;border-color:var(--accent)}
+.panel{display:none}.panel.active{display:block}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:16px}
+.card h3{font-size:1.1rem;margin-bottom:12px;color:var(--accent2)}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:900px){.grid-2{grid-template-columns:1fr}}
+label{display:block;font-size:0.85rem;color:var(--text2);margin-bottom:4px}
+input,select,textarea{width:100%;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:0.9rem}
+input:focus,select:focus{outline:none;border-color:var(--accent)}
+textarea{font-family:'Consolas',monospace;resize:vertical}
+.btn{padding:10px 20px;border:none;border-radius:var(--radius);cursor:pointer;font-size:0.9rem;font-weight:600;transition:all 0.2s}
+.btn-primary{background:var(--accent);color:white}.btn-primary:hover{background:var(--accent2)}
+.btn-secondary{background:var(--surface2);color:var(--text);border:1px solid var(--border)}
+.btn-sm{padding:6px 14px;font-size:0.82rem}
+.btn-group{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+table{width:100%;border-collapse:collapse;font-size:0.88rem}
+th,td{padding:8px 12px;text-align:left;border-bottom:1px solid var(--border)}
+th{color:var(--text2);font-weight:600;font-size:0.82rem;text-transform:uppercase}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.stat-box{background:var(--surface2);border-radius:var(--radius);padding:14px;text-align:center}
+.stat-box .value{font-size:1.4rem;font-weight:700;color:var(--accent2)}
+.stat-box .label{font-size:0.78rem;color:var(--text2);margin-top:4px}
+.plot-container{background:var(--surface2);border-radius:var(--radius);padding:16px;margin-top:12px}
+canvas{width:100%;background:transparent}
+.badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:0.75rem;font-weight:600}
+.badge-green{background:rgba(34,197,94,0.15);color:var(--green)}
+.badge-red{background:rgba(239,68,68,0.15);color:var(--red)}
+.badge-amber{background:rgba(245,158,11,0.15);color:var(--amber)}
+.info-box{background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:var(--radius);padding:14px;margin-bottom:16px;font-size:0.88rem;color:var(--text2)}
+.league-cell{padding:6px 8px;font-size:0.8rem;text-align:center}
+.league-sig{background:rgba(16,185,129,0.15)}
+.league-nonsig{background:rgba(148,163,184,0.08)}
+footer{text-align:center;padding:30px 0;color:var(--text2);font-size:0.82rem;border-top:1px solid var(--border);margin-top:30px}
+</style>
+</head>
+<body>
+<div class="container">
+<header>
+  <h1>LivingNMA</h1>
+  <p>Living Network Meta-Analysis — Frequentist NMA, consistency, P-scores, league table, network evolution</p>
+</header>
+
+<div class="tabs">
+  <div class="tab active" onclick="showTab('data')">Data Input</div>
+  <div class="tab" onclick="showTab('network')">Network Graph</div>
+  <div class="tab" onclick="showTab('results')">Results</div>
+  <div class="tab" onclick="showTab('league')">League Table</div>
+  <div class="tab" onclick="showTab('ranking')">Ranking</div>
+  <div class="tab" onclick="showTab('consistency')">Consistency</div>
+  <div class="tab" onclick="showTab('forest')">Forest Plots</div>
+  <div class="tab" onclick="showTab('guide')">Guide</div>
+</div>
+
+<!-- DATA INPUT -->
+<div class="panel active" id="panel-data">
+  <div class="card">
+    <h3>Load Example</h3>
+    <div class="btn-group">
+      <button class="btn btn-secondary btn-sm" onclick="loadExample('antihtn')">Anti-hypertensives (5 treatments)</button>
+      <button class="btn btn-secondary btn-sm" onclick="loadExample('antidep')">Antidepressants (4 treatments)</button>
+      <button class="btn btn-secondary btn-sm" onclick="loadExample('anticoag')">Anticoagulants for AF (5 DOACs)</button>
+    </div>
+  </div>
+  <div class="card">
+    <h3>Contrast-Level Data</h3>
+    <div class="info-box">One contrast per line: Study, Treatment1, Treatment2, Effect (T1 vs T2), SE. Effect on log scale for OR/RR/HR or raw for SMD. Treatment names are case-sensitive.</div>
+    <div class="grid-2">
+      <div><label>Effect measure</label><select id="effectType"><option value="logOR">Log OR</option><option value="logRR">Log RR</option><option value="SMD">SMD</option><option value="MD">Mean Difference</option></select></div>
+      <div><label>Reference treatment</label><input type="text" id="refTrt" value="" placeholder="Leave blank for auto (most connected)"></div>
+    </div>
+    <div style="margin-top:12px">
+      <label>Contrast data (study, trt1, trt2, effect_1vs2, SE)</label>
+      <textarea id="dataInput" rows="14" placeholder="ALLHAT  ACEi  Diuretic  0.05  0.04&#10;HOPE  ACEi  Placebo  -0.18  0.05"></textarea>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="runNMA()">Run NMA</button>
+    </div>
+  </div>
+</div>
+
+<!-- NETWORK -->
+<div class="panel" id="panel-network">
+  <div class="card"><h3>Network Graph</h3>
+    <div class="plot-container"><canvas id="networkCanvas" width="700" height="700"></canvas></div>
+  </div>
+</div>
+
+<!-- RESULTS -->
+<div class="panel" id="panel-results">
+  <div class="card"><h3>Network Summary</h3><div id="netSummary" class="stat-grid"></div></div>
+  <div class="card"><h3>All Pairwise Comparisons (vs Reference)</h3>
+    <table id="pairTable"><thead><tr><th>Comparison</th><th>Estimate</th><th>95% CI</th><th>P-value</th><th>Direct?</th></tr></thead><tbody></tbody></table>
+  </div>
+</div>
+
+<!-- LEAGUE TABLE -->
+<div class="panel" id="panel-league">
+  <div class="card"><h3>League Table</h3>
+    <p style="color:var(--text2);font-size:0.85rem;margin-bottom:8px">Row treatment vs column treatment. Green = statistically significant. Read: row is [estimate] compared to column.</p>
+    <div id="leagueDiv" style="overflow-x:auto"></div>
+  </div>
+</div>
+
+<!-- RANKING -->
+<div class="panel" id="panel-ranking">
+  <div class="card"><h3>Treatment Rankings (P-scores)</h3>
+    <div id="rankingSummary"></div>
+    <table id="rankTable"><thead><tr><th>Rank</th><th>Treatment</th><th>P-score</th><th>vs Reference</th></tr></thead><tbody></tbody></table>
+  </div>
+  <div class="card"><h3>Rankogram</h3>
+    <div class="plot-container"><canvas id="rankCanvas" width="800" height="400"></canvas></div>
+  </div>
+</div>
+
+<!-- CONSISTENCY -->
+<div class="panel" id="panel-consistency">
+  <div class="card"><h3>Consistency Assessment</h3><div id="consistSummary"></div></div>
+  <div class="card"><h3>Node-Splitting (Local Inconsistency)</h3>
+    <table id="nodesplitTable"><thead><tr><th>Comparison</th><th>Direct</th><th>Indirect</th><th>Difference</th><th>P-value</th><th>Verdict</th></tr></thead><tbody></tbody></table>
+  </div>
+</div>
+
+<!-- FOREST -->
+<div class="panel" id="panel-forest">
+  <div class="card"><h3>Forest Plot — All Comparisons vs Reference</h3>
+    <div class="plot-container"><canvas id="forestCanvas" width="950" height="500"></canvas></div>
+    <div class="btn-group"><button class="btn btn-secondary btn-sm" onclick="exportPlot('forestCanvas','nma_forest')">Export PNG</button></div>
+  </div>
+</div>
+
+<!-- GUIDE -->
+<div class="panel" id="panel-guide">
+  <div class="card">
+    <h3>Network Meta-Analysis — Guide</h3>
+    <div class="info-box"><strong>NMA</strong> synthesizes evidence from a network of treatments, combining direct comparisons (head-to-head trials) with indirect evidence (via common comparators). Key assumption: transitivity (patient populations are similar across trials).</div>
+    <table>
+      <tr><td><strong>Consistency</strong></td><td>Direct and indirect evidence should agree. Tested globally (Q decomposition) and locally (node-splitting).</td></tr>
+      <tr><td><strong>P-score</strong></td><td>Frequentist analogue of SUCRA. Ranges 0-1; higher = more likely to be best. Should be reported alongside effect estimates, not used alone for ranking.</td></tr>
+      <tr><td><strong>League table</strong></td><td>Matrix of all pairwise comparisons. Read as row vs column. Colored by significance.</td></tr>
+      <tr><td><strong>Living NMA</strong></td><td>Add new trials and re-analyze to track how network estimates evolve over time.</td></tr>
+    </table>
+  </div>
+</div>
+
+<footer>LivingNMA v1.0 — Mahmood Ahmad, Tahir Heart Institute — Offline-first, no data leaves your browser</footer>
+</div>
+
+<script>
+// ═══════════════════════════════════════════
+// STATS
+// ═══════════════════════════════════════════
+function normalCDF(z){const a1=0.254829592,a2=-0.284496736,a3=1.421413741,a4=-1.453152027,a5=1.061405429,p=0.3275911;const s=z<0?-1:1;const x=Math.abs(z)/Math.sqrt(2);const t=1/(1+p*x);const y=1-(((((a5*t+a4)*t)+a3)*t+a2)*t+a1)*t*Math.exp(-x*x);return 0.5*(1+s*y)}
+function normalQuantile(p){if(p<=0)return-Infinity;if(p>=1)return Infinity;if(p===0.5)return 0;const a=p<0.5?p:1-p;const t=Math.sqrt(-2*Math.log(a));const c0=2.515517,c1=0.802853,c2=0.010328,d1=1.432788,d2=0.189269,d3=0.001308;let z=t-(c0+c1*t+c2*t*t)/(1+d1*t+d2*t*t+d3*t*t*t);if(p<0.5)z=-z;return z}
+function chiSqP(x,df){if(x<=0)return 1;return 1-regGammaP(df/2,x/2)}
+function regGammaP(a,x){if(x<=0)return 0;const lga=lgamma(a);if(x<a+1){let s=1/a,t=1/a;for(let n=1;n<200;n++){t*=x/(a+n);s+=t;if(Math.abs(t)<1e-12*Math.abs(s))break}return s*Math.exp(-x+a*Math.log(x)-lga)}else{let f=1,b2=x+1-a,c2=1/1e-30,d2=1/b2;f=d2;for(let i=1;i<=200;i++){const an=-i*(i-a),bn=x+2*i+1-a;d2=bn+an*d2;if(Math.abs(d2)<1e-30)d2=1e-30;d2=1/d2;c2=bn+an/c2;if(Math.abs(c2)<1e-30)c2=1e-30;f*=d2*c2;if(Math.abs(d2*c2-1)<1e-10)break}return 1-f*Math.exp(-x+a*Math.log(x)-lga)}}
+function lgamma(x){const g=7,c=[0.99999999999980993,676.5203681218851,-1259.1392167224028,771.32342877765313,-176.61502916214059,12.507343278686905,-0.13857109526572012,9.9843695780195716e-6,1.5056327351493116e-7];if(x<0.5)return Math.log(Math.PI/Math.sin(Math.PI*x))-lgamma(1-x);x-=1;let a=c[0];const t=x+g+0.5;for(let i=1;i<g+2;i++)a+=c[i]/(x+i);return 0.5*Math.log(2*Math.PI)+(x+0.5)*Math.log(t)-t+Math.log(a)}
+
+// Matrix utilities
+function matCreate(r,c,v=0){return Array.from({length:r},()=>Array(c).fill(v))}
+function matMul(A,B){const r=A.length,c=B[0].length,k=B.length;const C=matCreate(r,c);for(let i=0;i<r;i++)for(let j=0;j<c;j++)for(let l=0;l<k;l++)C[i][j]+=A[i][l]*B[l][j];return C}
+function matT(A){const r=A.length,c=A[0].length;const B=matCreate(c,r);for(let i=0;i<r;i++)for(let j=0;j<c;j++)B[j][i]=A[i][j];return B}
+function matInv(M){
+  const n=M.length;const A=M.map(r=>[...r]);const I=matCreate(n,n);
+  for(let i=0;i<n;i++)I[i][i]=1;
+  for(let i=0;i<n;i++){
+    let maxR=i;for(let r=i+1;r<n;r++)if(Math.abs(A[r][i])>Math.abs(A[maxR][i]))maxR=r;
+    [A[i],A[maxR]]=[A[maxR],A[i]];[I[i],I[maxR]]=[I[maxR],I[i]];
+    const piv=A[i][i];if(Math.abs(piv)<1e-14)continue;
+    for(let j=0;j<n;j++){A[i][j]/=piv;I[i][j]/=piv}
+    for(let r=0;r<n;r++){if(r===i)continue;const f=A[r][i];for(let j=0;j<n;j++){A[r][j]-=f*A[i][j];I[r][j]-=f*I[i][j]}}
+  }
+  return I;
+}
+
+function parseData(){
+  const raw=document.getElementById('dataInput').value.trim();
+  if(!raw)return null;
+  const lines=raw.split('\n').filter(l=>l.trim());
+  const data=[];
+  for(const line of lines){
+    const p=line.trim().split(/[\t,]+/);
+    if(p.length<5)continue;
+    const study=p[0].trim(),t1=p[1].trim(),t2=p[2].trim();
+    const y=parseFloat(p[3]),se=parseFloat(p[4]);
+    if(!isFinite(y)||!isFinite(se)||se<=0)continue;
+    data.push({study,t1,t2,y,se,v:se*se});
+  }
+  return data.length>=2?data:null;
+}
+
+function buildNetwork(data){
+  const trts=new Set();
+  data.forEach(d=>{trts.add(d.t1);trts.add(d.t2)});
+  const trtList=[...trts].sort();
+  const trtIdx=Object.fromEntries(trtList.map((t,i)=>[t,i]));
+  const T=trtList.length;
+
+  // Adjacency
+  const adj=matCreate(T,T,0);
+  const edgeStudies={};
+  for(const d of data){
+    const i=trtIdx[d.t1],j=trtIdx[d.t2];
+    adj[i][j]++;adj[j][i]++;
+    const key=i<j?`${i}-${j}`:`${j}-${i}`;
+    if(!edgeStudies[key])edgeStudies[key]=[];
+    edgeStudies[key].push(d);
+  }
+
+  // Check connectivity (BFS)
+  const visited=new Set([0]);
+  const queue=[0];
+  while(queue.length>0){
+    const u=queue.shift();
+    for(let v=0;v<T;v++){if(adj[u][v]>0&&!visited.has(v)){visited.add(v);queue.push(v)}}
+  }
+  const connected=visited.size===T;
+
+  return{trtList,trtIdx,T,adj,edgeStudies,connected};
+}
+
+// Frequentist NMA using graph-theoretic approach (Rücker 2012)
+function runNMACore(data,net,refIdx){
+  const {trtList,trtIdx,T}=net;
+  const K=data.length;// number of contrasts
+
+  // Build design matrix X (K x T-1): each row encodes the contrast
+  // We drop the reference treatment column
+  const nonRefIdx=[];
+  for(let i=0;i<T;i++)if(i!==refIdx)nonRefIdx.push(i);
+  const X=matCreate(K,T-1);
+  const Y=[];const W=[];
+
+  for(let k=0;k<K;k++){
+    const d=data[k];
+    const i=trtIdx[d.t1],j=trtIdx[d.t2];
+    // Convention: y = effect of t1 vs t2
+    Y.push(d.y);
+    W.push(1/d.v);
+    // X row: +1 for t1's column (if not ref), -1 for t2's column (if not ref)
+    for(let c=0;c<T-1;c++){
+      const tIdx=nonRefIdx[c];
+      if(tIdx===i)X[k][c]=1;
+      else if(tIdx===j)X[k][c]=-1;
+      else X[k][c]=0;
+    }
+  }
+
+  // Weighted least squares: beta = (X'WX)^-1 X'WY
+  const Wmat=matCreate(K,K,0);
+  for(let k=0;k<K;k++)Wmat[k][k]=W[k];
+  const Xt=matT(X);
+  const XtW=matMul(Xt,Wmat);
+  const XtWX=matMul(XtW,X);
+  const XtWXinv=matInv(XtWX);
+  const Yvec=Y.map(y=>[y]);
+  const XtWY=matMul(XtW,Yvec);
+  const beta=matMul(XtWXinv,XtWY).map(r=>r[0]);
+
+  // Variance-covariance of beta = (X'WX)^-1
+  const vcov=XtWXinv;
+
+  // Q statistic
+  const fitted=matMul(X,beta.map(b=>[b])).map(r=>r[0]);
+  let Q=0;
+  for(let k=0;k<K;k++){Q+=W[k]*(Y[k]-fitted[k])*(Y[k]-fitted[k])}
+  const df=K-(T-1);
+  const Qp=df>0?chiSqP(Q,df):1;
+
+  // DL heterogeneity
+  let tau2=0;
+  if(df>0&&Q>df){
+    let sumW=0,trWXtWXinvW=0;
+    for(let k=0;k<K;k++)sumW+=W[k];
+    // trace(W - W*X*(X'WX)^-1*X'W) = sum(W) - trace(XtWX_inv * XtW * W * X)
+    // Simplified: C = sumW - trace(...)
+    const WX=matMul(Wmat,X);
+    const H=matMul(matMul(X,XtWXinv),Xt);// Hat matrix without W
+    let trHW=0;
+    for(let k=0;k<K;k++)trHW+=H[k][k]*W[k]*W[k]/W[k];// simplified
+    const C=sumW-trHW;
+    tau2=C>0?Math.max(0,(Q-df)/C):0;
+  }
+
+  // Build all pairwise results
+  const comparisons=[];
+  const alpha=0.05;
+  const zc=normalQuantile(1-alpha/2);
+
+  // vs reference comparisons
+  for(let c=0;c<T-1;c++){
+    const trt=trtList[nonRefIdx[c]];
+    const est=beta[c];
+    const se=Math.sqrt(vcov[c][c]);
+    const z=est/se;
+    const p=2*(1-normalCDF(Math.abs(z)));
+    comparisons.push({t1:trt,t2:trtList[refIdx],est,se,ci:[est-zc*se,est+zc*se],p,z});
+  }
+
+  // All pairwise (for league table)
+  const allPairs=matCreate(T,T,null);
+  for(let i=0;i<T;i++){
+    for(let j=0;j<T;j++){
+      if(i===j)continue;
+      // Effect of trtList[i] vs trtList[j]
+      if(i===refIdx){
+        // -beta[j's index in nonRef]
+        const jc=nonRefIdx.indexOf(j);
+        if(jc>=0){
+          const est=-beta[jc];const se=Math.sqrt(vcov[jc][jc]);
+          allPairs[i][j]={est,se,ci:[est-zc*se,est+zc*se],p:2*(1-normalCDF(Math.abs(est/se)))};
+        }
+      }else if(j===refIdx){
+        const ic=nonRefIdx.indexOf(i);
+        if(ic>=0){
+          const est=beta[ic];const se=Math.sqrt(vcov[ic][ic]);
+          allPairs[i][j]={est,se,ci:[est-zc*se,est+zc*se],p:2*(1-normalCDF(Math.abs(est/se)))};
+        }
+      }else{
+        const ic=nonRefIdx.indexOf(i),jc=nonRefIdx.indexOf(j);
+        if(ic>=0&&jc>=0){
+          const est=beta[ic]-beta[jc];
+          const se=Math.sqrt(vcov[ic][ic]+vcov[jc][jc]-2*vcov[ic][jc]);
+          allPairs[i][j]={est,se,ci:[est-zc*se,est+zc*se],p:2*(1-normalCDF(Math.abs(est/se)))};
+        }
+      }
+    }
+  }
+
+  // P-scores
+  const pscores=[];
+  for(let i=0;i<T;i++){
+    let score=0,count=0;
+    for(let j=0;j<T;j++){
+      if(i===j||!allPairs[i][j])continue;
+      const z2=allPairs[i][j].est/allPairs[i][j].se;
+      // P(trt i better than trt j) — assumes lower is better for log scale
+      score+=normalCDF(-z2);// negative z means i is better (lower estimate)
+      count++;
+    }
+    pscores.push({trt:trtList[i],idx:i,pscore:count>0?score/count:0.5});
+  }
+  pscores.sort((a,b)=>b.pscore-a.pscore);
+
+  // Node-splitting (local inconsistency)
+  const nodesplit=[];
+  const directPairs=new Set();
+  data.forEach(d=>{
+    const i=trtIdx[d.t1],j=trtIdx[d.t2];
+    const key=Math.min(i,j)+'-'+Math.max(i,j);
+    directPairs.add(key);
+  });
+
+  for(const key of directPairs){
+    const [i,j]=key.split('-').map(Number);
+    if(!allPairs[i][j])continue;
+    // Direct evidence
+    const directStudies=data.filter(d=>(trtIdx[d.t1]===i&&trtIdx[d.t2]===j)||(trtIdx[d.t1]===j&&trtIdx[d.t2]===i));
+    if(directStudies.length===0)continue;
+    let dSumW=0,dSumWY=0;
+    for(const ds of directStudies){
+      const w=1/ds.v;
+      const sign=(trtIdx[ds.t1]===i)?1:-1;
+      dSumW+=w;dSumWY+=w*ds.y*sign;
+    }
+    const directEst=dSumWY/dSumW;
+    const directSE=1/Math.sqrt(dSumW);
+    // Indirect = NMA estimate (consistency model)
+    const nmaEst=allPairs[i][j].est;
+    const nmaSE=allPairs[i][j].se;
+    // Indirect estimate from NMA minus direct
+    // Approximate: indirect = (nmaEst/nmaSE^2 - directEst/directSE^2) / (1/nmaSE^2 - 1/directSE^2)
+    const wNMA=1/(nmaSE*nmaSE),wDir=1/(directSE*directSE);
+    if(wNMA<=wDir)continue;// can't separate
+    const indirectEst=(nmaEst*wNMA-directEst*wDir)/(wNMA-wDir);
+    const indirectSE=1/Math.sqrt(Math.abs(wNMA-wDir));
+
+    const diff=directEst-indirectEst;
+    const diffSE=Math.sqrt(directSE*directSE+indirectSE*indirectSE);
+    const pVal=2*(1-normalCDF(Math.abs(diff/diffSE)));
+
+    nodesplit.push({
+      t1:trtList[i],t2:trtList[j],
+      direct:{est:directEst,se:directSE},
+      indirect:{est:indirectEst,se:indirectSE},
+      diff,diffSE,p:pVal
+    });
+  }
+
+  return{beta,vcov,Q,Qp,df,tau2,comparisons,allPairs,pscores,nodesplit,nonRefIdx};
+}
+
+let lastResults=null;
+
+function runNMA(){
+  const data=parseData();
+  if(!data){alert('Need ≥2 contrasts (study, trt1, trt2, effect, SE).');return}
+  const net=buildNetwork(data);
+  if(!net.connected){alert('Network is disconnected — cannot perform NMA. All treatments must be connected.');return}
+
+  // Determine reference
+  let refName=document.getElementById('refTrt').value.trim();
+  let refIdx;
+  if(refName&&net.trtIdx[refName]!==undefined){refIdx=net.trtIdx[refName]}
+  else{
+    // Most connected treatment
+    let maxDeg=0;refIdx=0;
+    for(let i=0;i<net.T;i++){
+      const deg=net.adj[i].reduce((s,v)=>s+v,0);
+      if(deg>maxDeg){maxDeg=deg;refIdx=i}
+    }
+    refName=net.trtList[refIdx];
+    document.getElementById('refTrt').value=refName;
+  }
+
+  const nma=runNMACore(data,net,refIdx);
+  const effectType=document.getElementById('effectType').value;
+  const isLog=effectType==='logOR'||effectType==='logRR';
+  lastResults={data,net,nma,refIdx,refName,isLog,effectType};
+
+  renderNetwork();renderResults2();renderLeague();renderRanking();renderConsistency();renderNMAForest();
+  showTab('network');
+}
+
+function renderNetwork(){
+  const canvas=document.getElementById('networkCanvas');
+  const ctx=canvas.getContext('2d');
+  const W=canvas.width,H=canvas.height;
+  ctx.clearRect(0,0,W,H);
+  const{net}=lastResults;
+  const T=net.T;
+  const cx=W/2,cy=H/2,R=Math.min(W,H)/2-80;
+
+  // Node positions (circular layout)
+  const pos=net.trtList.map((_,i)=>{
+    const angle=(2*Math.PI*i/T)-Math.PI/2;
+    return{x:cx+R*Math.cos(angle),y:cy+R*Math.sin(angle)};
+  });
+
+  // Edges
+  for(let i=0;i<T;i++){
+    for(let j=i+1;j<T;j++){
+      if(net.adj[i][j]===0)continue;
+      const thickness=Math.min(8,1+net.adj[i][j]*1.5);
+      ctx.strokeStyle='rgba(16,185,129,0.4)';ctx.lineWidth=thickness;
+      ctx.beginPath();ctx.moveTo(pos[i].x,pos[i].y);ctx.lineTo(pos[j].x,pos[j].y);ctx.stroke();
+      // Edge label (study count)
+      const mx=(pos[i].x+pos[j].x)/2,my=(pos[i].y+pos[j].y)/2;
+      ctx.fillStyle='#94a3b8';ctx.font='11px sans-serif';ctx.textAlign='center';
+      ctx.fillText(net.adj[i][j].toString(),mx,my-5);
+    }
+  }
+
+  // Nodes
+  for(let i=0;i<T;i++){
+    const nStudies=net.adj[i].reduce((s,v)=>s+v,0);
+    const r=Math.max(20,Math.min(40,12+nStudies*3));
+    ctx.beginPath();ctx.arc(pos[i].x,pos[i].y,r,0,Math.PI*2);
+    ctx.fillStyle=i===lastResults.refIdx?'rgba(6,182,212,0.3)':'rgba(16,185,129,0.2)';
+    ctx.fill();
+    ctx.strokeStyle=i===lastResults.refIdx?'#06b6d4':'#10b981';
+    ctx.lineWidth=2;ctx.stroke();
+    ctx.fillStyle='#e2e8f0';ctx.font='bold 12px sans-serif';ctx.textAlign='center';
+    ctx.fillText(net.trtList[i],pos[i].x,pos[i].y+4);
+  }
+}
+
+function fmtE(v,isLog){return isLog?Math.exp(v).toFixed(3):v.toFixed(3)}
+
+function renderResults2(){
+  const r=lastResults;const{nma,net}=r;
+  const nEdges=Object.keys(net.edgeStudies).length;
+  document.getElementById('netSummary').innerHTML=`
+    <div class="stat-box"><div class="value">${net.T}</div><div class="label">Treatments</div></div>
+    <div class="stat-box"><div class="value">${r.data.length}</div><div class="label">Contrasts</div></div>
+    <div class="stat-box"><div class="value">${nEdges}</div><div class="label">Direct Comparisons</div></div>
+    <div class="stat-box"><div class="value">${nma.Q.toFixed(2)}</div><div class="label">Q (df=${nma.df}), P=${nma.Qp.toFixed(3)}</div></div>
+    <div class="stat-box"><div class="value">${nma.tau2.toFixed(4)}</div><div class="label">τ² (heterogeneity)</div></div>
+    <div class="stat-box"><div class="value">${r.refName}</div><div class="label">Reference</div></div>
+  `;
+  document.querySelector('#pairTable tbody').innerHTML=nma.comparisons.map(c=>{
+    const hasDirect=r.data.some(d=>(d.t1===c.t1&&d.t2===c.t2)||(d.t1===c.t2&&d.t2===c.t1));
+    return`<tr><td>${c.t1} vs ${c.t2}</td><td>${fmtE(c.est,r.isLog)}</td><td>${fmtE(c.ci[0],r.isLog)} – ${fmtE(c.ci[1],r.isLog)}</td><td>${c.p<0.001?c.p.toExponential(2):c.p.toFixed(4)}</td><td>${hasDirect?'<span class="badge badge-green">Direct+Indirect</span>':'<span class="badge badge-amber">Indirect only</span>'}</td></tr>`;
+  }).join('');
+}
+
+function renderLeague(){
+  const{nma,net,isLog}=lastResults;
+  const T=net.T;
+  let html='<table style="font-size:0.8rem"><tr><td></td>';
+  for(let j=0;j<T;j++)html+=`<th style="padding:4px 6px;text-align:center;font-size:0.75rem">${net.trtList[j]}</th>`;
+  html+='</tr>';
+  for(let i=0;i<T;i++){
+    html+=`<tr><th style="padding:4px 8px;text-align:right;font-size:0.75rem">${net.trtList[i]}</th>`;
+    for(let j=0;j<T;j++){
+      if(i===j){html+='<td class="league-cell" style="background:var(--surface)">—</td>';continue}
+      const p=nma.allPairs[i][j];
+      if(!p){html+='<td class="league-cell">—</td>';continue}
+      const sig=p.p<0.05;
+      const cls=sig?'league-sig':'league-nonsig';
+      html+=`<td class="league-cell ${cls}" title="${net.trtList[i]} vs ${net.trtList[j]}: ${fmtE(p.est,isLog)} (${fmtE(p.ci[0],isLog)}, ${fmtE(p.ci[1],isLog)})">${fmtE(p.est,isLog)}<br><span style="font-size:0.7rem;color:var(--text2)">(${fmtE(p.ci[0],isLog)}, ${fmtE(p.ci[1],isLog)})</span></td>`;
+    }
+    html+='</tr>';
+  }
+  html+='</table>';
+  document.getElementById('leagueDiv').innerHTML=html;
+}
+
+function renderRanking(){
+  const{nma,refName,isLog}=lastResults;
+  const best=nma.pscores[0];
+  document.getElementById('rankingSummary').innerHTML=`<p>Best treatment: <strong>${best.trt}</strong> (P-score = ${best.pscore.toFixed(3)}). Reference: ${refName}.</p>`;
+  document.querySelector('#rankTable tbody').innerHTML=nma.pscores.map((s,i)=>{
+    const comp=nma.comparisons.find(c=>c.t1===s.trt);
+    const vsRef=comp?`${fmtE(comp.est,isLog)} (${fmtE(comp.ci[0],isLog)}, ${fmtE(comp.ci[1],isLog)})`:'Reference';
+    return`<tr><td>${i+1}</td><td><strong>${s.trt}</strong></td><td>${s.pscore.toFixed(3)}</td><td>${vsRef}</td></tr>`;
+  }).join('');
+
+  // Rankogram
+  const canvas=document.getElementById('rankCanvas');
+  const ctx=canvas.getContext('2d');
+  const W=canvas.width,H=canvas.height;
+  ctx.clearRect(0,0,W,H);
+  const pad={top:30,right:40,bottom:50,left:60};
+  const pw=W-pad.left-pad.right,ph=H-pad.top-pad.bottom;
+  const T=nma.pscores.length;
+  const barW=Math.min(50,pw/T-8);
+  const colors=['#10b981','#06b6d4','#6366f1','#f59e0b','#ef4444','#8b5cf6','#f97316','#ec4899'];
+
+  nma.pscores.forEach((s,i)=>{
+    const x=pad.left+(pw/T)*i+(pw/T-barW)/2;
+    const h=s.pscore*ph;
+    ctx.fillStyle=colors[i%colors.length];
+    ctx.fillRect(x,pad.top+ph-h,barW,h);
+    ctx.fillStyle='#e2e8f0';ctx.font='bold 10px sans-serif';ctx.textAlign='center';
+    ctx.fillText(s.pscore.toFixed(2),x+barW/2,pad.top+ph-h-8);
+    ctx.fillStyle='#94a3b8';ctx.font='11px sans-serif';
+    ctx.save();ctx.translate(x+barW/2,H-pad.bottom+8);ctx.rotate(-Math.PI/4);
+    ctx.textAlign='left';ctx.fillText(s.trt,0,0);ctx.restore();
+  });
+
+  ctx.fillStyle='#94a3b8';ctx.font='12px sans-serif';ctx.textAlign='center';
+  ctx.fillText('P-score (higher = better)',pad.left+pw/2,pad.top-10);
+}
+
+function renderConsistency(){
+  const{nma}=lastResults;
+  const anyIncon=nma.nodesplit.some(n=>n.p<0.05);
+  const globalCon=nma.Qp>=0.05;
+  document.getElementById('consistSummary').innerHTML=`
+    <p>Global heterogeneity: Q = ${nma.Q.toFixed(2)}, df = ${nma.df}, P = ${nma.Qp.toFixed(4)} ${globalCon?'<span class="badge badge-green">Consistent</span>':'<span class="badge badge-red">Inconsistent</span>'}</p>
+    <p style="margin-top:8px">Local inconsistency (node-splitting): ${anyIncon?'<span class="badge badge-red">Inconsistency detected in some comparisons</span>':'<span class="badge badge-green">No significant inconsistency</span>'}</p>
+  `;
+  document.querySelector('#nodesplitTable tbody').innerHTML=nma.nodesplit.map(n=>{
+    const sig=n.p<0.05;
+    return`<tr><td>${n.t1} vs ${n.t2}</td><td>${n.direct.est.toFixed(3)} (SE ${n.direct.se.toFixed(3)})</td><td>${n.indirect.est.toFixed(3)} (SE ${n.indirect.se.toFixed(3)})</td><td>${n.diff.toFixed(3)} (SE ${n.diffSE.toFixed(3)})</td><td>${n.p.toFixed(4)}</td><td>${sig?'<span class="badge badge-red">Inconsistent</span>':'<span class="badge badge-green">Consistent</span>'}</td></tr>`;
+  }).join('');
+}
+
+function renderNMAForest(){
+  const canvas=document.getElementById('forestCanvas');
+  const r=lastResults;
+  const comps=r.nma.comparisons;
+  const rows=comps.length;
+  canvas.height=Math.max(300,rows*28+80);
+  const ctx=canvas.getContext('2d');
+  const W=canvas.width,H=canvas.height;
+  ctx.clearRect(0,0,W,H);
+  const pad={top:40,right:140,bottom:40,left:220};
+  const pw=W-pad.left-pad.right;
+  const rowH=26;
+
+  const allEst=comps.flatMap(c=>[c.ci[0],c.ci[1]]);
+  const eMin=Math.min(...allEst,0)*1.15;
+  const eMax=Math.max(...allEst,0)*1.15;
+  const xScale=v=>pad.left+((v-eMin)/(eMax-eMin))*pw;
+
+  ctx.strokeStyle='#475569';ctx.lineWidth=1;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(xScale(0),pad.top);ctx.lineTo(xScale(0),H-pad.bottom);ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.fillStyle='#94a3b8';ctx.font='bold 11px sans-serif';ctx.textAlign='center';
+  ctx.fillText(`vs ${r.refName}`,pad.left+pw/2,pad.top-10);
+
+  comps.forEach((c,i)=>{
+    const y=pad.top+10+i*rowH;
+    const sig=c.p<0.05;
+    const color=sig?'#10b981':'#94a3b8';
+    ctx.strokeStyle=color;ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.moveTo(xScale(c.ci[0]),y);ctx.lineTo(xScale(c.ci[1]),y);ctx.stroke();
+    ctx.beginPath();ctx.arc(xScale(c.est),y,5,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();
+    ctx.fillStyle='#e2e8f0';ctx.font='11px sans-serif';ctx.textAlign='right';
+    ctx.fillText(c.t1,pad.left-8,y+4);
+    ctx.fillStyle='#94a3b8';ctx.font='10px monospace';ctx.textAlign='left';
+    ctx.fillText(`${fmtE(c.est,r.isLog)} [${fmtE(c.ci[0],r.isLog)}, ${fmtE(c.ci[1],r.isLog)}]`,W-pad.right+5,y+4);
+  });
+}
+
+// ═══════════════════════════════════════════
+// EXAMPLES
+// ═══════════════════════════════════════════
+const EXAMPLES={
+  antihtn:{data:`ALLHAT-A\tACEi\tDiuretic\t0.04\t0.03
+ALLHAT-B\tCCB\tDiuretic\t0.01\t0.03
+LIFE\tARB\tBB\t-0.13\t0.05
+VALUE\tARB\tCCB\t0.04\t0.04
+ASCOT\tCCB+ACEi\tBB\t-0.10\t0.04
+ACCOMPLISH\tACEi+CCB\tACEi+Diuretic\t-0.18\t0.06
+ONTARGET\tARB\tACEi\t0.01\t0.03
+HOPE\tACEi\tPlacebo\t-0.20\t0.04
+SCOPE\tARB\tPlacebo\t-0.04\t0.06
+FEVER\tCCB\tPlacebo\t-0.26\t0.08
+MRC-E\tDiuretic\tPlacebo\t-0.07\t0.05
+SHEP\tDiuretic\tPlacebo\t-0.26\t0.07`,ref:'Placebo'},
+  antidep:{data:`Study1\tSSRI\tPlacebo\t-0.30\t0.08
+Study2\tSNRI\tPlacebo\t-0.35\t0.09
+Study3\tTCA\tPlacebo\t-0.40\t0.10
+Study4\tSSRI\tSNRI\t0.05\t0.11
+Study5\tSSRI\tTCA\t0.10\t0.12
+Study6\tSNRI\tTCA\t0.06\t0.13
+Study7\tSSRI\tPlacebo\t-0.25\t0.09
+Study8\tSNRI\tPlacebo\t-0.32\t0.10`,ref:'Placebo'},
+  anticoag:{data:`RE-LY-150\tDabigatran150\tWarfarin\t-0.20\t0.06
+RE-LY-110\tDabigatran110\tWarfarin\t0.01\t0.06
+ROCKET-AF\tRivaroxaban\tWarfarin\t-0.03\t0.05
+ARISTOTLE\tApixaban\tWarfarin\t-0.21\t0.06
+ENGAGE-60\tEdoxaban60\tWarfarin\t-0.13\t0.05
+ENGAGE-30\tEdoxaban30\tWarfarin\t0.10\t0.06`,ref:'Warfarin'}
+};
+
+function loadExample(k){
+  const e=EXAMPLES[k];
+  document.getElementById('dataInput').value=e.data;
+  if(e.ref)document.getElementById('refTrt').value=e.ref;
+}
+
+function showTab(n){document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));document.getElementById('panel-'+n).classList.add('active');document.querySelectorAll('.tab').forEach(t=>{const m=t.getAttribute('onclick')?.match(/showTab\('(\w+)'\)/);if(m&&m[1]===n)t.classList.add('active')})}
+function exportPlot(id,name){const c=document.getElementById(id);const a=document.createElement('a');a.download=name+'.png';a.href=c.toDataURL();a.click()}
+</script>
+</body>
+</html>
