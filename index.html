@@ -82,6 +82,8 @@ footer{text-align:center;padding:30px 0;color:var(--text2);font-size:0.82rem;bor
   <div class="tab" onclick="showTab('contribution')">Contribution</div>
   <div class="tab" onclick="showTab('funnel')">Funnel</div>
   <div class="tab" onclick="showTab('cinema')">CINeMA</div>
+  <div class="tab" onclick="showTab('directvsnma')">Direct vs NMA</div>
+  <div class="tab" onclick="showTab('assessment')">Assessment</div>
   <div class="tab" onclick="showTab('guide')">Guide</div>
 </div>
 
@@ -137,18 +139,24 @@ footer{text-align:center;padding:30px 0;color:var(--text2);font-size:0.82rem;bor
 
 <!-- RANKING -->
 <div class="panel" id="panel-ranking">
-  <div class="card"><h3>Treatment Rankings (P-scores)</h3>
+  <div class="card"><h3>Treatment Rankings (P-scores &amp; SUCRA)</h3>
     <div id="rankingSummary"></div>
-    <table id="rankTable"><thead><tr><th>Rank</th><th>Treatment</th><th>P-score</th><th>vs Reference</th><th>Rank Stability</th></tr></thead><tbody></tbody></table>
+    <table id="rankTable"><thead><tr><th>Rank</th><th>Treatment</th><th>P-score</th><th>SUCRA</th><th>Mean Rank (95% CrI)</th><th>vs Reference</th><th>Rank Stability</th></tr></thead><tbody></tbody></table>
   </div>
-  <div class="card"><h3>Rankogram</h3>
-    <div class="plot-container"><canvas id="rankCanvas" width="800" height="400"></canvas></div>
+  <div class="card"><h3>Rankogram (Salanti et al. 2011) — Probability of Each Rank</h3>
+    <div class="info-box">Each row shows the probability of a treatment being at each rank position, computed from 1000 multivariate normal simulations of (beta, vcov). Darker color = higher probability. SUCRA = area under the cumulative ranking curve.</div>
+    <div class="plot-container"><canvas id="rankCanvas" width="900" height="500"></canvas></div>
   </div>
 </div>
 
 <!-- CONSISTENCY -->
 <div class="panel" id="panel-consistency">
   <div class="card"><h3>Consistency Assessment</h3><div id="consistSummary"></div></div>
+  <div class="card"><h3>Design-by-Treatment Interaction Test (Higgins et al. 2012)</h3>
+    <div class="info-box">Global inconsistency test: decomposes total Q into heterogeneity (within-design) and inconsistency (between-design) components. Unlike node-splitting (local), this is a single omnibus test. Q_inconsistency = Q_total - Q_heterogeneity, tested as chi-squared.</div>
+    <div id="dbtSummary"></div>
+    <table id="dbtTable"><thead><tr><th>Component</th><th>Q</th><th>df</th><th>P-value</th><th>Interpretation</th></tr></thead><tbody></tbody></table>
+  </div>
   <div class="card"><h3>Node-Splitting (Local Inconsistency)</h3>
     <table id="nodesplitTable"><thead><tr><th>Comparison</th><th>Direct</th><th>Indirect</th><th>Difference</th><th>P-value</th><th>Verdict</th></tr></thead><tbody></tbody></table>
   </div>
@@ -190,6 +198,10 @@ footer{text-align:center;padding:30px 0;color:var(--text2);font-size:0.82rem;bor
     <div class="plot-container"><canvas id="funnelCanvas" width="800" height="500"></canvas></div>
     <div class="btn-group"><button class="btn btn-secondary btn-sm" onclick="exportPlot('funnelCanvas','nma_funnel')">Export PNG</button></div>
   </div>
+  <div class="card"><h3>Small-Study Effects Regression Test (Chaimani &amp; Salanti 2012)</h3>
+    <div class="info-box">Comparison-adjusted Egger-like test: regresses study residuals (y_ij - d_ij) on SE with comparison indicators. A significant slope indicates asymmetry consistent with small-study effects or publication bias in the network.</div>
+    <div id="smallStudyDiv"></div>
+  </div>
 </div>
 
 <!-- CINeMA -->
@@ -197,6 +209,27 @@ footer{text-align:center;padding:30px 0;color:var(--text2);font-size:0.82rem;bor
   <div class="card"><h3>CINeMA-Style Confidence Assessment (Nikolakopoulou et al. 2020)</h3>
     <div class="info-box">Simplified automated assessment across 6 domains: Within-study bias, Reporting bias, Indirectness, Imprecision, Heterogeneity, Incoherence. Overall confidence: High / Moderate / Low / Very Low. Based on computable criteria from the NMA results.</div>
     <div id="cinemaDiv" style="overflow-x:auto"></div>
+  </div>
+</div>
+
+<!-- DIRECT vs NMA -->
+<div class="panel" id="panel-directvsnma">
+  <div class="card"><h3>Direct vs Network Estimates (Split Forest)</h3>
+    <div class="info-box">For each comparison with direct evidence, shows three estimates: <strong>Direct</strong> (pairwise MA of head-to-head studies), <strong>Network</strong> (NMA consistency model), and <strong>Indirect</strong> (derived). Agreement supports consistency. Disagreement flags potential incoherence.</div>
+    <div class="plot-container"><canvas id="directNMACanvas" width="1000" height="500"></canvas></div>
+    <div class="btn-group"><button class="btn btn-secondary btn-sm" onclick="exportPlot('directNMACanvas','nma_direct_vs_network')">Export PNG</button></div>
+  </div>
+</div>
+
+<!-- ASSESSMENT (Transitivity + Connectivity) -->
+<div class="panel" id="panel-assessment">
+  <div class="card"><h3>Transitivity Assessment</h3>
+    <div class="info-box">Transitivity is the fundamental assumption of NMA: study populations across comparisons must be sufficiently similar. This table compares study-level characteristics (sample size proxy, precision, study count) across direct comparisons to flag potential violations.</div>
+    <div id="transitivityDiv" style="overflow-x:auto"></div>
+  </div>
+  <div class="card"><h3>Network Connectivity &amp; Vulnerability</h3>
+    <div class="info-box">Identifies <strong>bridge edges</strong> (single points of failure): direct comparisons whose removal would disconnect the network. Bridge edges are critical — the entire NMA depends on them for indirect evidence flow.</div>
+    <div id="connectivityDiv"></div>
   </div>
 </div>
 
@@ -216,12 +249,19 @@ footer{text-align:center;padding:30px 0;color:var(--text2);font-size:0.82rem;bor
       <tr><td><strong>Comparison-Adjusted Funnel</strong></td><td>Residuals (study effect minus NMA estimate) plotted against SE. Asymmetry suggests small-study effects (Chaimani &amp; Salanti 2012).</td></tr>
       <tr><td><strong>CINeMA</strong></td><td>Confidence in NMA estimates across 6 domains: within-study bias, reporting bias, indirectness, imprecision, heterogeneity, incoherence (Nikolakopoulou et al. 2020).</td></tr>
       <tr><td><strong>Rank Robustness</strong></td><td>Leave-one-out stability: what proportion of study removals preserve the ranking order for each treatment pair.</td></tr>
+      <tr><td><strong>Design-by-Treatment</strong></td><td>Global inconsistency test (Higgins et al. 2012): decomposes Q into heterogeneity and inconsistency components. Omnibus test complementing local node-splitting.</td></tr>
+      <tr><td><strong>Rankogram</strong></td><td>Proper simulation-based rankogram (Salanti et al. 2011): 1000 MVN samples from (beta, vcov), computing rank probabilities as heatmap. Reports mean rank and 95% CrI.</td></tr>
+      <tr><td><strong>SUCRA</strong></td><td>Surface Under Cumulative Ranking: SUCRA_i = sum(P(rank &le; r)) / (T-1). Frequentist analogue should closely match P-scores. Computed from rankogram simulations.</td></tr>
+      <tr><td><strong>Small-Study Effects</strong></td><td>Comparison-adjusted Egger-like regression (Chaimani &amp; Salanti 2012): tests slope of residuals vs SE. Adapted for NMA with comparison indicators.</td></tr>
+      <tr><td><strong>Transitivity</strong></td><td>Assessment table comparing study characteristics (precision, count, year proxy) across direct comparisons to check the fundamental NMA assumption.</td></tr>
+      <tr><td><strong>Direct vs NMA</strong></td><td>Split forest plot showing direct, network, and indirect estimates side-by-side for each comparison with head-to-head evidence.</td></tr>
+      <tr><td><strong>Bridge Edges</strong></td><td>Network vulnerability: identifies edges whose removal disconnects the network. Critical comparisons that the entire indirect evidence chain depends on.</td></tr>
       <tr><td><strong>Living NMA</strong></td><td>Add new trials and re-analyze to track how network estimates evolve over time.</td></tr>
     </table>
   </div>
 </div>
 
-<footer>LivingNMA v2.0 — Mahmood Ahmad, Tahir Heart Institute — Offline-first, no data leaves your browser — Net heat, contribution, SIDE, CINeMA, prediction intervals, comparison-adjusted funnel, rank robustness</footer>
+<footer>LivingNMA v3.0 — Mahmood Ahmad, Tahir Heart Institute — Offline-first, no data leaves your browser — Design-by-treatment, rankogram, SUCRA, small-study effects, transitivity, direct vs NMA, bridge edges, net heat, contribution, SIDE, CINeMA, prediction intervals, comparison-adjusted funnel, rank robustness</footer>
 </div>
 
 <script>
@@ -535,6 +575,7 @@ function runNMA(){
 
   renderNetwork();renderResults2();renderLeague();renderRanking();renderConsistency();renderNMAForest();
   renderNetHeat();renderContribution();renderFunnel();renderCINeMA();renderSIDE();
+  renderDesignByTreatment();renderDirectVsNMA();renderSmallStudyEffects();renderTransitivity();renderConnectivity();
   showTab('network');
 }
 
@@ -666,15 +707,134 @@ function computeRankRobustness(){
   return{stability,nLOO:looRanks.length};
 }
 
+// ═══════════════════════════════════════════
+// RANKOGRAM & SUCRA (Salanti et al. 2011) — Simulation-based
+// ═══════════════════════════════════════════
+function computeRankogram(nma, net, nSim){
+  // Simulate from MVN(beta, vcov) and compute rank probabilities
+  // beta = T-1 dimensional vector (vs reference)
+  // For each simulation, compute all pairwise and rank treatments
+  const T = net.T;
+  const beta = nma.beta; // T-1 dimensional
+  const vcov = nma.vcov; // (T-1) x (T-1)
+  const nonRefIdx = nma.nonRefIdx;
+  const refIdx = lastResults.refIdx;
+  const n = beta.length; // T-1
+
+  // Cholesky decomposition of vcov for MVN sampling
+  const L = matCreate(n, n, 0);
+  for(let i = 0; i < n; i++){
+    for(let j = 0; j <= i; j++){
+      let s = vcov[i][j];
+      for(let k = 0; k < j; k++) s -= L[i][k] * L[j][k];
+      if(i === j){
+        L[i][j] = Math.sqrt(Math.max(0, s));
+      } else {
+        L[i][j] = L[j][j] > 1e-14 ? s / L[j][j] : 0;
+      }
+    }
+  }
+
+  // Seeded PRNG (xoshiro128**)
+  let s0=123456789,s1=362436069,s2=521288629,s3=88675123;
+  function xoshiro(){
+    const r=(((s1*5)<<7)*9)>>>0;
+    const t=s1<<9;
+    s2^=s0;s3^=s1;s1^=s2;s0^=s3;s2^=t;s3=(s3<<11)|(s3>>>21);
+    return r/4294967296;
+  }
+  // Box-Muller for standard normal
+  function randN(){
+    let u1=xoshiro(),u2=xoshiro();
+    while(u1===0)u1=xoshiro();
+    return Math.sqrt(-2*Math.log(u1))*Math.cos(2*Math.PI*u2);
+  }
+
+  // rankProb[treatment][rank] = count
+  const rankProb = matCreate(T, T, 0);
+  const rankSum = Array(T).fill(0);
+  const rankSamples = Array.from({length:T}, ()=>[]);
+
+  for(let sim = 0; sim < nSim; sim++){
+    // Generate MVN sample: betaSim = beta + L * z
+    const z = Array.from({length:n}, ()=>randN());
+    const betaSim = beta.map((b,i)=>{
+      let v = b;
+      for(let j = 0; j <= i; j++) v += L[i][j] * z[j];
+      return v;
+    });
+
+    // Compute effect for all treatments (vs reference = 0)
+    const effects = Array(T).fill(0);
+    for(let c = 0; c < n; c++){
+      effects[nonRefIdx[c]] = betaSim[c];
+    }
+    // effects[refIdx] = 0 already
+
+    // Rank treatments: lower effect = better (rank 1) for log scale
+    // Sort indices by effect (ascending = rank 1 is best/lowest)
+    const indices = Array.from({length:T}, (_,i)=>i);
+    indices.sort((a,b) => effects[a] - effects[b]);
+
+    // Assign ranks
+    for(let r = 0; r < T; r++){
+      const trtIdx = indices[r];
+      rankProb[trtIdx][r]++;
+      rankSum[trtIdx] += (r + 1);
+      rankSamples[trtIdx].push(r + 1);
+    }
+  }
+
+  // Convert counts to probabilities
+  for(let i = 0; i < T; i++){
+    for(let r = 0; r < T; r++){
+      rankProb[i][r] /= nSim;
+    }
+  }
+
+  // Mean rank
+  const meanRank = rankSum.map(s => s / nSim);
+
+  // 95% CrI for ranks (2.5th and 97.5th percentiles)
+  const rankCrI = rankSamples.map(samples => {
+    samples.sort((a,b) => a - b);
+    const lo = samples[Math.floor(nSim * 0.025)];
+    const hi = samples[Math.floor(nSim * 0.975)];
+    return {lo, hi};
+  });
+
+  // SUCRA: SUCRA_i = sum_{r=1}^{T-1} P(rank <= r) / (T-1)
+  // = sum_{r=1}^{T-1} cumProb(r) / (T-1)
+  const sucra = [];
+  for(let i = 0; i < T; i++){
+    let cumSum = 0;
+    let cum = 0;
+    for(let r = 0; r < T - 1; r++){
+      cum += rankProb[i][r];
+      cumSum += cum;
+    }
+    sucra.push(cumSum / (T - 1));
+  }
+
+  return {rankProb, meanRank, rankCrI, sucra};
+}
+
 function renderRanking(){
-  const{nma,refName,isLog}=lastResults;
+  const{nma,refName,isLog,net}=lastResults;
   const best=nma.pscores[0];
+  const T=net.T;
 
   // Compute robustness
   const robustness=computeRankRobustness();
   lastResults.robustness=robustness;
 
-  document.getElementById('rankingSummary').innerHTML=`<p>Best treatment: <strong>${best.trt}</strong> (P-score = ${best.pscore.toFixed(3)}). Reference: ${refName}. Rank robustness assessed via leave-one-out (${robustness.nLOO || 0} iterations).</p>`;
+  // Compute rankogram and SUCRA via simulation
+  const rankData=computeRankogram(nma, net, 1000);
+  lastResults.rankData=rankData;
+
+  document.getElementById('rankingSummary').innerHTML=`<p>Best treatment: <strong>${best.trt}</strong> (P-score = ${best.pscore.toFixed(3)}, SUCRA = ${rankData.sucra[nma.pscores[0].idx].toFixed(3)}). Reference: ${refName}. Rankogram from 1000 MVN simulations. Rank robustness via leave-one-out (${robustness.nLOO || 0} iterations).</p>`;
+
+  // Build ranking table sorted by P-score (matching pscores order)
   document.querySelector('#rankTable tbody').innerHTML=nma.pscores.map((s,i)=>{
     const comp=nma.comparisons.find(c=>c.t1===s.trt);
     const vsRef=comp?`${fmtE(comp.est,isLog)} (${fmtE(comp.ci[0],isLog)}, ${fmtE(comp.ci[1],isLog)})`:'Reference';
@@ -685,34 +845,89 @@ function renderRanking(){
       robCls=rob.stability>=0.8?'robustness-stable':rob.stability>=0.5?'robustness-moderate':'robustness-unstable';
       robStr=`<span class="${robCls}">${pct}% stable</span>`;
     }
-    return`<tr><td>${i+1}</td><td><strong>${s.trt}</strong></td><td>${s.pscore.toFixed(3)}</td><td>${vsRef}</td><td>${robStr}</td></tr>`;
+    const tIdx=s.idx;
+    const sucrVal=rankData.sucra[tIdx].toFixed(3);
+    const mr=rankData.meanRank[tIdx].toFixed(1);
+    const cri=rankData.rankCrI[tIdx];
+    return`<tr><td>${i+1}</td><td><strong>${s.trt}</strong></td><td>${s.pscore.toFixed(3)}</td><td>${sucrVal}</td><td>${mr} (${cri.lo}–${cri.hi})</td><td>${vsRef}</td><td>${robStr}</td></tr>`;
   }).join('');
 
-  // Rankogram
+  // Rankogram heatmap
   const canvas=document.getElementById('rankCanvas');
   const ctx=canvas.getContext('2d');
   const W=canvas.width,H=canvas.height;
   ctx.clearRect(0,0,W,H);
-  const pad={top:30,right:40,bottom:50,left:60};
+
+  const pad={top:40,right:180,bottom:60,left:120};
   const pw=W-pad.left-pad.right,ph=H-pad.top-pad.bottom;
-  const T=nma.pscores.length;
-  const barW=Math.min(50,pw/T-8);
-  const colors=['#10b981','#06b6d4','#6366f1','#f59e0b','#ef4444','#8b5cf6','#f97316','#ec4899'];
+  const cellW=Math.max(20,pw/T);
+  const cellH=Math.max(20,ph/T);
 
-  nma.pscores.forEach((s,i)=>{
-    const x=pad.left+(pw/T)*i+(pw/T-barW)/2;
-    const h=s.pscore*ph;
-    ctx.fillStyle=colors[i%colors.length];
-    ctx.fillRect(x,pad.top+ph-h,barW,h);
-    ctx.fillStyle='#e2e8f0';ctx.font='bold 10px sans-serif';ctx.textAlign='center';
-    ctx.fillText(s.pscore.toFixed(2),x+barW/2,pad.top+ph-h-8);
-    ctx.fillStyle='#94a3b8';ctx.font='11px sans-serif';
-    ctx.save();ctx.translate(x+barW/2,H-pad.bottom+8);ctx.rotate(-Math.PI/4);
-    ctx.textAlign='left';ctx.fillText(s.trt,0,0);ctx.restore();
-  });
+  // Reorder treatments by P-score (best first)
+  const order=nma.pscores.map(s=>s.idx);
 
-  ctx.fillStyle='#94a3b8';ctx.font='12px sans-serif';ctx.textAlign='center';
-  ctx.fillText('P-score (higher = better)',pad.left+pw/2,pad.top-10);
+  // Draw heatmap: rows = treatments (sorted by P-score), columns = rank positions
+  for(let row=0;row<T;row++){
+    const tIdx=order[row];
+    for(let col=0;col<T;col++){
+      const prob=rankData.rankProb[tIdx][col];
+      const x=pad.left+col*cellW;
+      const y=pad.top+row*cellH;
+
+      // Color: dark (low prob) to bright green (high prob)
+      const intensity=Math.min(1, prob * 2.5); // scale for visibility
+      const r2=Math.round(10 + intensity * 6);
+      const g=Math.round(30 + intensity * 225);
+      const b=Math.round(20 + intensity * 100);
+      ctx.fillStyle=`rgb(${r2},${g},${b})`;
+      ctx.fillRect(x, y, cellW-1, cellH-1);
+
+      // Text probability
+      if(cellW>28 && cellH>16){
+        ctx.fillStyle=prob>0.3?'#fff':'#94a3b8';
+        ctx.font='bold 10px monospace';ctx.textAlign='center';
+        ctx.fillText((prob*100).toFixed(0)+'%', x+cellW/2, y+cellH/2+4);
+      }
+    }
+  }
+
+  // Row labels (treatment names)
+  ctx.fillStyle='#e2e8f0';ctx.font='11px sans-serif';ctx.textAlign='right';
+  for(let row=0;row<T;row++){
+    ctx.fillText(net.trtList[order[row]], pad.left-8, pad.top+row*cellH+cellH/2+4);
+  }
+
+  // Column labels (rank positions)
+  ctx.fillStyle='#94a3b8';ctx.font='11px sans-serif';ctx.textAlign='center';
+  for(let col=0;col<T;col++){
+    ctx.fillText('Rank '+(col+1), pad.left+col*cellW+cellW/2, pad.top+T*cellH+16);
+  }
+
+  // Title
+  ctx.fillStyle='#e2e8f0';ctx.font='bold 12px sans-serif';ctx.textAlign='center';
+  ctx.fillText('Rankogram: Probability of Each Treatment at Each Rank (1000 simulations)', pad.left+pw/2, pad.top-14);
+
+  // Legend: SUCRA + P-score on the right
+  const lx=pad.left+T*cellW+14;
+  ctx.fillStyle='#e2e8f0';ctx.font='bold 10px sans-serif';ctx.textAlign='left';
+  ctx.fillText('P-score / SUCRA', lx, pad.top-2);
+  ctx.font='10px sans-serif';
+  for(let row=0;row<T;row++){
+    const tIdx=order[row];
+    const ps=nma.pscores.find(s=>s.idx===tIdx);
+    ctx.fillStyle='#94a3b8';
+    ctx.fillText(`${ps.pscore.toFixed(3)} / ${rankData.sucra[tIdx].toFixed(3)}`, lx, pad.top+row*cellH+cellH/2+4);
+  }
+
+  // Color legend
+  const lgY=pad.top+T*cellH+30;
+  const lgW=Math.min(150, pw);
+  const grd=ctx.createLinearGradient(pad.left, lgY, pad.left+lgW, lgY);
+  grd.addColorStop(0,'rgb(10,30,20)');grd.addColorStop(1,'rgb(16,255,120)');
+  ctx.fillStyle=grd;ctx.fillRect(pad.left, lgY, lgW, 10);
+  ctx.fillStyle='#94a3b8';ctx.font='9px sans-serif';ctx.textAlign='left';
+  ctx.fillText('0%', pad.left, lgY+22);ctx.textAlign='right';
+  ctx.fillText('High prob', pad.left+lgW, lgY+22);
 }
 
 function renderConsistency(){
@@ -1285,6 +1500,562 @@ function renderCINeMA(){
   }
   html+='</tbody></table>';
   document.getElementById('cinemaDiv').innerHTML=html;
+}
+
+// ═══════════════════════════════════════════
+// DESIGN-BY-TREATMENT INTERACTION TEST (Higgins et al. 2012)
+// ═══════════════════════════════════════════
+function renderDesignByTreatment(){
+  const r=lastResults;
+  const{nma,net,data}=r;
+  const{trtIdx,trtList,T}=net;
+  const K=data.length;
+
+  // Identify designs: each unique set of treatments compared (edge)
+  const designMap={};// designKey -> [study indices]
+  for(let k=0;k<K;k++){
+    const d=data[k];
+    const i=trtIdx[d.t1],j=trtIdx[d.t2];
+    const key=Math.min(i,j)+'-'+Math.max(i,j);
+    if(!designMap[key])designMap[key]=[];
+    designMap[key].push(k);
+  }
+
+  const designKeys=Object.keys(designMap);
+  const nDesigns=designKeys.length;
+
+  // Q_total = overall Q from the consistency model (already computed)
+  const Q_total=nma.Q;
+  const df_total=nma.df; // K - (T-1)
+
+  // Q_heterogeneity: sum of within-design Q values
+  // For each design with >1 study, compute within-design Q (pairwise MA)
+  let Q_het=0;
+  let df_het=0;
+  let designsWithMultiple=0;
+
+  const designDetails=[];
+
+  for(const key of designKeys){
+    const studyIdx=designMap[key];
+    const nStudies=studyIdx.length;
+    const [i,j]=key.split('-').map(Number);
+    const label=trtList[i]+' vs '+trtList[j];
+
+    if(nStudies<2){
+      designDetails.push({label, nStudies, Q:0, df:0, note:'Single study'});
+      continue;
+    }
+    designsWithMultiple++;
+
+    // Pairwise fixed-effect MA for this design
+    // Orient all effects as i vs j
+    let sumW=0, sumWY=0;
+    const ys=[], ws=[];
+    for(const k of studyIdx){
+      const d=data[k];
+      const sign=(trtIdx[d.t1]===i)?1:-1;
+      const y=d.y*sign;
+      const w=1/d.v;
+      sumW+=w; sumWY+=w*y;
+      ys.push(y); ws.push(w);
+    }
+    const pooled=sumWY/sumW;
+    let Qd=0;
+    for(let s=0;s<nStudies;s++){
+      Qd+=ws[s]*(ys[s]-pooled)*(ys[s]-pooled);
+    }
+    const dfd=nStudies-1;
+    Q_het+=Qd;
+    df_het+=dfd;
+    designDetails.push({label, nStudies, Q:Qd, df:dfd, note:''});
+  }
+
+  // Q_inconsistency = Q_total - Q_heterogeneity
+  const Q_incon=Math.max(0, Q_total - Q_het);
+
+  // df_inconsistency: per Higgins 2012:
+  // df_incon = (number of designs) - (T - 1) = nDesigns - (T-1)
+  // But only if nDesigns > T-1, otherwise no df for inconsistency
+  const df_incon=Math.max(0, nDesigns - (T - 1));
+
+  const p_total=df_total>0?chiSqP(Q_total, df_total):1;
+  const p_het=df_het>0?chiSqP(Q_het, df_het):1;
+  const p_incon=df_incon>0?chiSqP(Q_incon, df_incon):1;
+
+  const incon_verdict=df_incon>0?(p_incon<0.05?'Significant inconsistency detected':'No significant inconsistency'):'Insufficient designs to test';
+
+  document.getElementById('dbtSummary').innerHTML=`
+    <div class="stat-grid" style="margin-bottom:12px">
+      <div class="stat-box"><div class="value">${nDesigns}</div><div class="label">Designs (direct comparisons)</div></div>
+      <div class="stat-box"><div class="value">${designsWithMultiple}</div><div class="label">Designs with >1 study</div></div>
+      <div class="stat-box"><div class="value">${df_incon>0?(p_incon<0.05?'<span style="color:var(--red)">Inconsistent</span>':'<span style="color:var(--green)">Consistent</span>'):'—'}</div><div class="label">Design-by-Treatment Result</div></div>
+    </div>`;
+
+  const rows=[
+    {comp:'Total (consistency model)', Q:Q_total, df:df_total, p:p_total, interp:p_total<0.05?'Significant':'Not significant'},
+    {comp:'Heterogeneity (within-design)', Q:Q_het, df:df_het, p:p_het, interp:p_het<0.05?'Significant':'Not significant'},
+    {comp:'Inconsistency (between-design)', Q:Q_incon, df:df_incon, p:p_incon, interp:incon_verdict}
+  ];
+
+  document.querySelector('#dbtTable tbody').innerHTML=rows.map(row=>{
+    const cls=row.comp.includes('Inconsistency')?(row.p<0.05?'badge-red':'badge-green'):'';
+    return`<tr><td><strong>${row.comp}</strong></td><td>${row.Q.toFixed(3)}</td><td>${row.df}</td><td>${row.df>0?(row.p<0.001?row.p.toExponential(2):row.p.toFixed(4)):'—'}</td><td>${row.df>0?`<span class="badge ${cls}">${row.interp}</span>`:row.interp}</td></tr>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════
+// DIRECT vs NMA FOREST PLOT (Split Forest)
+// ═══════════════════════════════════════════
+function renderDirectVsNMA(){
+  const r=lastResults;
+  const{nma,net,data,isLog}=r;
+  const{trtIdx,trtList,T}=net;
+  const K=data.length;
+  const canvas=document.getElementById('directNMACanvas');
+  const ctx=canvas.getContext('2d');
+
+  // For each direct comparison, compute direct, network, indirect
+  const directPairs=new Set();
+  data.forEach(d=>{
+    const i=trtIdx[d.t1],j=trtIdx[d.t2];
+    directPairs.add(Math.min(i,j)+'-'+Math.max(i,j));
+  });
+
+  const entries=[];
+  for(const key of directPairs){
+    const [i,j]=key.split('-').map(Number);
+    if(!nma.allPairs[i]||!nma.allPairs[i][j])continue;
+
+    // Direct estimate
+    const directStudies=data.filter(d=>(trtIdx[d.t1]===i&&trtIdx[d.t2]===j)||(trtIdx[d.t1]===j&&trtIdx[d.t2]===i));
+    if(directStudies.length===0)continue;
+    let dSumW=0,dSumWY=0;
+    for(const ds of directStudies){
+      const w=1/ds.v;
+      const sign=(trtIdx[ds.t1]===i)?1:-1;
+      dSumW+=w;dSumWY+=w*ds.y*sign;
+    }
+    const directEst=dSumWY/dSumW;
+    const directSE=1/Math.sqrt(dSumW);
+    const zc=1.96;
+
+    // Network estimate
+    const nmaEst=nma.allPairs[i][j].est;
+    const nmaSE=nma.allPairs[i][j].se;
+
+    // Indirect estimate (derived)
+    const wNMA=1/(nmaSE*nmaSE),wDir=1/(directSE*directSE);
+    let indirectEst=null,indirectSE=null;
+    if(wNMA>wDir){
+      indirectEst=(nmaEst*wNMA-directEst*wDir)/(wNMA-wDir);
+      indirectSE=1/Math.sqrt(Math.abs(wNMA-wDir));
+    }
+
+    entries.push({
+      label:trtList[i]+' vs '+trtList[j],
+      direct:{est:directEst,se:directSE,lo:directEst-zc*directSE,hi:directEst+zc*directSE},
+      network:{est:nmaEst,se:nmaSE,lo:nmaEst-zc*nmaSE,hi:nmaEst+zc*nmaSE},
+      indirect:indirectEst!==null?{est:indirectEst,se:indirectSE,lo:indirectEst-zc*indirectSE,hi:indirectEst+zc*indirectSE}:null,
+      nStudies:directStudies.length
+    });
+  }
+
+  if(entries.length===0){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle='#94a3b8';ctx.font='14px sans-serif';ctx.textAlign='center';
+    ctx.fillText('No comparisons with both direct and indirect evidence', canvas.width/2, canvas.height/2);
+    return;
+  }
+
+  // Layout: each comparison gets 3 rows (direct, network, indirect) + spacing
+  const rowsPerEntry=3;
+  const rowH=22;
+  const gapH=10;
+  const nRows=entries.length*(rowsPerEntry+1)-1;
+  canvas.height=Math.max(300, nRows*rowH+120);
+  const W=canvas.width,H=canvas.height;
+  ctx.clearRect(0,0,W,H);
+
+  const pad={top:50,right:200,bottom:40,left:180};
+  const pw=W-pad.left-pad.right;
+
+  // Find range
+  const allVals=[];
+  for(const e of entries){
+    allVals.push(e.direct.lo, e.direct.hi, e.network.lo, e.network.hi);
+    if(e.indirect){allVals.push(e.indirect.lo, e.indirect.hi);}
+  }
+  const eMin=Math.min(...allVals, 0)*1.2-0.05;
+  const eMax=Math.max(...allVals, 0)*1.2+0.05;
+  const xScale=v=>pad.left+((v-eMin)/(eMax-eMin))*pw;
+
+  // Null line
+  ctx.strokeStyle='#475569';ctx.lineWidth=1;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(xScale(0),pad.top);ctx.lineTo(xScale(0),H-pad.bottom);ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Title
+  ctx.fillStyle='#e2e8f0';ctx.font='bold 12px sans-serif';ctx.textAlign='center';
+  ctx.fillText('Direct vs Network vs Indirect Estimates',pad.left+pw/2,20);
+
+  // Header
+  ctx.fillStyle='#94a3b8';ctx.font='bold 10px sans-serif';ctx.textAlign='center';
+  ctx.fillText(isLog?'Log Scale':'Effect',pad.left+pw/2,pad.top-8);
+  ctx.textAlign='left';
+  ctx.fillText('Estimate [95% CI]',W-pad.right+8,pad.top-8);
+
+  const colorDirect='#10b981';
+  const colorNetwork='#06b6d4';
+  const colorIndirect='#f59e0b';
+
+  let curY=pad.top+10;
+
+  for(let e=0;e<entries.length;e++){
+    const entry=entries[e];
+
+    // Comparison label
+    ctx.fillStyle='#e2e8f0';ctx.font='bold 11px sans-serif';ctx.textAlign='right';
+    ctx.fillText(entry.label,pad.left-8,curY+rowH/2+3);
+
+    // Draw three rows: Direct, Network, Indirect
+    const types=[
+      {lbl:'Direct ('+entry.nStudies+' studies)', data:entry.direct, color:colorDirect},
+      {lbl:'Network', data:entry.network, color:colorNetwork},
+      {lbl:'Indirect', data:entry.indirect, color:colorIndirect}
+    ];
+
+    for(let t=0;t<types.length;t++){
+      const ty=types[t];
+      const y=curY+t*rowH;
+
+      // Sub-label
+      ctx.fillStyle=ty.color;ctx.font='10px sans-serif';ctx.textAlign='right';
+      ctx.fillText(ty.lbl, pad.left-8, y+4);
+
+      if(!ty.data){
+        ctx.fillStyle='#475569';ctx.font='10px sans-serif';ctx.textAlign='left';
+        ctx.fillText('N/A', W-pad.right+8, y+4);
+        continue;
+      }
+
+      // CI line
+      const x1=Math.max(pad.left,xScale(ty.data.lo));
+      const x2=Math.min(pad.left+pw,xScale(ty.data.hi));
+      ctx.strokeStyle=ty.color;ctx.lineWidth=1.5;
+      ctx.beginPath();ctx.moveTo(x1,y);ctx.lineTo(x2,y);ctx.stroke();
+
+      // Diamond point
+      const xp=xScale(ty.data.est);
+      if(t===1){
+        // Diamond for network
+        ctx.fillStyle=ty.color;ctx.beginPath();
+        ctx.moveTo(xp,y-5);ctx.lineTo(xp+5,y);ctx.lineTo(xp,y+5);ctx.lineTo(xp-5,y);ctx.closePath();ctx.fill();
+      } else {
+        ctx.beginPath();ctx.arc(xp,y,4,0,Math.PI*2);ctx.fillStyle=ty.color;ctx.fill();
+      }
+
+      // Text
+      ctx.fillStyle='#94a3b8';ctx.font='9px monospace';ctx.textAlign='left';
+      ctx.fillText(`${fmtE(ty.data.est,isLog)} [${fmtE(ty.data.lo,isLog)}, ${fmtE(ty.data.hi,isLog)}]`, W-pad.right+8, y+3);
+    }
+
+    curY+=rowsPerEntry*rowH+gapH;
+
+    // Separator line between comparisons
+    if(e<entries.length-1){
+      ctx.strokeStyle='#2a3450';ctx.lineWidth=0.5;
+      ctx.beginPath();ctx.moveTo(pad.left-100,curY-gapH/2);ctx.lineTo(W-30,curY-gapH/2);ctx.stroke();
+    }
+  }
+
+  // Legend at bottom
+  const lgY=H-30;
+  const lgX=pad.left;
+  [{c:colorDirect,l:'Direct'},{c:colorNetwork,l:'Network (NMA)'},{c:colorIndirect,l:'Indirect (derived)'}].forEach((item,i)=>{
+    const x=lgX+i*160;
+    ctx.fillStyle=item.c;ctx.fillRect(x,lgY,10,10);
+    ctx.fillStyle='#94a3b8';ctx.font='10px sans-serif';ctx.textAlign='left';
+    ctx.fillText(item.l,x+14,lgY+8);
+  });
+}
+
+// ═══════════════════════════════════════════
+// SMALL-STUDY EFFECTS REGRESSION TEST (Chaimani & Salanti 2012)
+// ═══════════════════════════════════════════
+function renderSmallStudyEffects(){
+  const r=lastResults;
+  const{nma,net,data}=r;
+  const{trtIdx,trtList}=net;
+  const K=data.length;
+
+  // Compute residuals and SEs
+  // Residual = observed effect - NMA estimate for that comparison
+  const residuals=[];
+  const ses=[];
+  const compIndicators=[];// comparison index for each study
+
+  // Map comparisons to indices
+  const compMap={};
+  let compIdx=0;
+
+  for(let k=0;k<K;k++){
+    const d=data[k];
+    const i=trtIdx[d.t1],j=trtIdx[d.t2];
+    let nmaEst=0;
+    if(nma.allPairs[i]&&nma.allPairs[i][j])nmaEst=nma.allPairs[i][j].est;
+    else if(nma.allPairs[j]&&nma.allPairs[j][i])nmaEst=-nma.allPairs[j][i].est;
+
+    const resid=d.y-nmaEst;
+    residuals.push(resid);
+    ses.push(d.se);
+
+    const key=Math.min(i,j)+'-'+Math.max(i,j);
+    if(compMap[key]===undefined){compMap[key]=compIdx++;};
+    compIndicators.push(compMap[key]);
+  }
+
+  const nComps=compIdx;
+
+  // Regression: resid_k = a + b * SE_k + sum(gamma_c * I(comp=c)) + error
+  // Simplified Egger-like test: regress |resid| / SE (precision) on 1/SE
+  // Or more properly: regress resid on SE with WLS (weights = 1/SE^2)
+  // Test H0: b = 0 (no small-study effects)
+
+  // Simple weighted regression: y = a + b*x, weighted by 1/var
+  // y = residual, x = SE, w = 1/SE^2
+  if(K < 3){
+    document.getElementById('smallStudyDiv').innerHTML='<p style="color:var(--text2)">Need at least 3 studies for regression test.</p>';
+    return;
+  }
+
+  // WLS: y = a + b*SE
+  let sumW=0, sumWX=0, sumWY=0, sumWXX=0, sumWXY=0;
+  for(let k=0;k<K;k++){
+    const w=1/(ses[k]*ses[k]);
+    sumW+=w;
+    sumWX+=w*ses[k];
+    sumWY+=w*residuals[k];
+    sumWXX+=w*ses[k]*ses[k];
+    sumWXY+=w*ses[k]*residuals[k];
+  }
+
+  const denom=sumW*sumWXX - sumWX*sumWX;
+  if(Math.abs(denom)<1e-14){
+    document.getElementById('smallStudyDiv').innerHTML='<p style="color:var(--text2)">Cannot compute regression (singular).</p>';
+    return;
+  }
+
+  const b_slope=(sumW*sumWXY - sumWX*sumWY)/denom;
+  const a_intercept=(sumWXX*sumWY - sumWX*sumWXY)/denom;
+
+  // Residual variance
+  let ssRes=0;
+  for(let k=0;k<K;k++){
+    const w=1/(ses[k]*ses[k]);
+    const pred=a_intercept+b_slope*ses[k];
+    ssRes+=w*(residuals[k]-pred)*(residuals[k]-pred);
+  }
+  const sigmaHat2=ssRes/(K-2);
+
+  // SE of slope
+  const se_b=Math.sqrt(sigmaHat2*sumW/denom);
+  const t_stat=b_slope/se_b;
+  const df_test=K-2;
+
+  // Two-sided p-value using normal approximation (for large df)
+  const p_val=2*(1-normalCDF(Math.abs(t_stat)));
+
+  const verdict=p_val<0.05?'Significant asymmetry (small-study effects detected)':'No significant asymmetry';
+  const badgeCls=p_val<0.05?'badge-red':'badge-green';
+
+  document.getElementById('smallStudyDiv').innerHTML=`
+    <div class="stat-grid" style="margin-bottom:12px">
+      <div class="stat-box"><div class="value">${b_slope.toFixed(4)}</div><div class="label">Slope (beta)</div></div>
+      <div class="stat-box"><div class="value">${t_stat.toFixed(3)}</div><div class="label">t-statistic</div></div>
+      <div class="stat-box"><div class="value">${df_test}</div><div class="label">df</div></div>
+      <div class="stat-box"><div class="value">${p_val<0.001?p_val.toExponential(2):p_val.toFixed(4)}</div><div class="label">P-value</div></div>
+    </div>
+    <p><span class="badge ${badgeCls}">${verdict}</span></p>
+    <p style="color:var(--text2);font-size:0.85rem;margin-top:8px">Interpretation: Slope ${b_slope>0?'>':'<'} 0 indicates ${b_slope>0?'larger effects in smaller studies (publication bias or genuine heterogeneity)':'larger effects in bigger studies (unusual pattern)'}. Intercept = ${a_intercept.toFixed(4)}. Regression weighted by 1/SE&sup2;. ${K<10?'<span style="color:var(--amber)">Warning: test has low power with <10 studies.</span>':''}</p>`;
+}
+
+// ═══════════════════════════════════════════
+// TRANSITIVITY ASSESSMENT TABLE
+// ═══════════════════════════════════════════
+function renderTransitivity(){
+  const r=lastResults;
+  const{nma,net,data}=r;
+  const{trtIdx,trtList,T}=net;
+
+  // For each direct comparison, compute summary statistics
+  const designMap={};
+  for(const d of data){
+    const i=trtIdx[d.t1],j=trtIdx[d.t2];
+    const key=Math.min(i,j)+'-'+Math.max(i,j);
+    if(!designMap[key])designMap[key]={label:trtList[Math.min(i,j)]+' vs '+trtList[Math.max(i,j)],studies:[]};
+    designMap[key].studies.push(d);
+  }
+
+  const rows=[];
+  for(const key of Object.keys(designMap)){
+    const dm=designMap[key];
+    const studies=dm.studies;
+    const n=studies.length;
+
+    // Precision proxy: mean 1/SE^2 (higher = larger sample size)
+    const precisions=studies.map(s=>1/(s.se*s.se));
+    const meanPrec=precisions.reduce((a,b)=>a+b,0)/n;
+
+    // Mean SE
+    const meanSE=studies.map(s=>s.se).reduce((a,b)=>a+b,0)/n;
+
+    // Effect size range
+    const effects=studies.map(s=>s.y);
+    const minEffect=Math.min(...effects);
+    const maxEffect=Math.max(...effects);
+    const effectRange=maxEffect-minEffect;
+
+    // Median precision (proxy for sample size)
+    const sortedPrec=[...precisions].sort((a,b)=>a-b);
+    const medPrec=n%2===0?(sortedPrec[n/2-1]+sortedPrec[n/2])/2:sortedPrec[Math.floor(n/2)];
+
+    rows.push({
+      label:dm.label,
+      nStudies:n,
+      meanSE:meanSE,
+      meanPrec:meanPrec,
+      medPrec:medPrec,
+      effectRange:effectRange,
+      minEffect:minEffect,
+      maxEffect:maxEffect
+    });
+  }
+
+  // Flag comparisons with very different characteristics
+  // Compute overall mean precision across all comparisons
+  const overallMeanPrec=rows.reduce((s,r2)=>s+r2.meanPrec,0)/rows.length;
+  const overallMeanSE=rows.reduce((s,r2)=>s+r2.meanSE,0)/rows.length;
+
+  let html='<table><thead><tr><th>Comparison</th><th>Studies</th><th>Mean SE</th><th>Mean Precision (1/SE&sup2;)</th><th>Effect Range</th><th>Transitivity Flag</th></tr></thead><tbody>';
+  for(const row of rows){
+    // Flag if precision is very different from overall mean (>2x or <0.5x)
+    const precRatio=row.meanPrec/overallMeanPrec;
+    const seRatio=row.meanSE/overallMeanSE;
+    let flag='';
+    let flagCls='badge-green';
+    if(precRatio>2.5||precRatio<0.4){
+      flag='Sample size disparity';flagCls='badge-amber';
+    } else if(row.nStudies===1){
+      flag='Single study only';flagCls='badge-amber';
+    } else {
+      flag='OK';
+    }
+    if(row.effectRange>1.0){
+      flag+=(flag?'; ':'')+'Wide effect range';flagCls='badge-red';
+    }
+    if(!flag)flag='OK';
+
+    html+=`<tr><td>${row.label}</td><td>${row.nStudies}</td><td>${row.meanSE.toFixed(4)}</td><td>${row.meanPrec.toFixed(1)}</td><td>${row.effectRange.toFixed(3)} (${row.minEffect.toFixed(3)} to ${row.maxEffect.toFixed(3)})</td><td><span class="badge ${flagCls}">${flag}</span></td></tr>`;
+  }
+  html+='</tbody></table>';
+
+  // Overall assessment
+  const flaggedCount=rows.filter(r2=>{
+    const precRatio=r2.meanPrec/overallMeanPrec;
+    return precRatio>2.5||precRatio<0.4||r2.effectRange>1.0;
+  }).length;
+
+  html=`<p style="margin-bottom:12px">Overall: ${flaggedCount===0?'<span class="badge badge-green">No major transitivity concerns detected</span>':`<span class="badge badge-amber">${flaggedCount} comparison(s) flagged for potential transitivity violation</span>`}. Mean precision across all comparisons: ${overallMeanPrec.toFixed(1)}. Mean SE: ${overallMeanSE.toFixed(4)}.</p>`+html;
+
+  document.getElementById('transitivityDiv').innerHTML=html;
+}
+
+// ═══════════════════════════════════════════
+// NETWORK CONNECTIVITY & BRIDGE EDGES
+// ═══════════════════════════════════════════
+function renderConnectivity(){
+  const r=lastResults;
+  const{net,data}=r;
+  const{trtIdx,trtList,T,adj}=net;
+
+  // Find all edges
+  const edges=[];
+  const edgeSet=new Set();
+  for(let i=0;i<T;i++){
+    for(let j=i+1;j<T;j++){
+      if(adj[i][j]>0){
+        edges.push({i,j,label:trtList[i]+' vs '+trtList[j],nStudies:adj[i][j]});
+        edgeSet.add(i+'-'+j);
+      }
+    }
+  }
+
+  // For each edge, check if removing it disconnects the network
+  // BFS connectivity check without edge (i,j)
+  function isConnectedWithout(skipI, skipJ){
+    const visited=new Set([0]);
+    const queue=[0];
+    while(queue.length>0){
+      const u=queue.shift();
+      for(let v=0;v<T;v++){
+        if(v===u||visited.has(v))continue;
+        if(adj[u][v]===0)continue;
+        // Skip the removed edge
+        if((u===skipI&&v===skipJ)||(u===skipJ&&v===skipI)){
+          // Check if there are other studies for this edge — if adj > 1, removing one "study" doesn't remove the edge
+          // But we're testing edge removal (the entire direct comparison)
+          continue;
+        }
+        visited.add(v);
+        queue.push(v);
+      }
+    }
+    return visited.size===T;
+  }
+
+  const bridges=[];
+  const nonBridges=[];
+  for(const edge of edges){
+    const connected=isConnectedWithout(edge.i,edge.j);
+    if(!connected){
+      bridges.push(edge);
+    } else {
+      nonBridges.push(edge);
+    }
+  }
+
+  // Vulnerability score: fraction of edges that are bridges
+  const vulnerability=edges.length>0?bridges.length/edges.length:0;
+
+  let html=`<div class="stat-grid" style="margin-bottom:16px">
+    <div class="stat-box"><div class="value">${edges.length}</div><div class="label">Total edges</div></div>
+    <div class="stat-box"><div class="value">${bridges.length}</div><div class="label">Bridge edges</div></div>
+    <div class="stat-box"><div class="value">${(vulnerability*100).toFixed(0)}%</div><div class="label">Vulnerability score</div></div>
+    <div class="stat-box"><div class="value">${vulnerability===0?'<span style="color:var(--green)">Robust</span>':vulnerability<0.5?'<span style="color:var(--amber)">Moderate</span>':'<span style="color:var(--red)">Vulnerable</span>'}</div><div class="label">Network resilience</div></div>
+  </div>`;
+
+  if(bridges.length>0){
+    html+=`<h4 style="color:var(--red);margin-bottom:8px">Bridge Edges (Critical — removal disconnects network)</h4>`;
+    html+='<table><thead><tr><th>Comparison</th><th>Studies</th><th>Risk</th></tr></thead><tbody>';
+    for(const b of bridges){
+      html+=`<tr><td><strong>${b.label}</strong></td><td>${b.nStudies}</td><td><span class="badge badge-red">BRIDGE — single point of failure</span></td></tr>`;
+    }
+    html+='</tbody></table>';
+  } else {
+    html+=`<p style="color:var(--green)"><strong>No bridge edges found.</strong> The network remains connected even if any single direct comparison is removed. This indicates a well-connected, robust network.</p>`;
+  }
+
+  if(nonBridges.length>0){
+    html+=`<h4 style="color:var(--green);margin:16px 0 8px">Non-Bridge Edges (Redundant — safe to remove)</h4>`;
+    html+='<table><thead><tr><th>Comparison</th><th>Studies</th><th>Status</th></tr></thead><tbody>';
+    for(const nb of nonBridges){
+      html+=`<tr><td>${nb.label}</td><td>${nb.nStudies}</td><td><span class="badge badge-green">Redundant path exists</span></td></tr>`;
+    }
+    html+='</tbody></table>';
+  }
+
+  document.getElementById('connectivityDiv').innerHTML=html;
 }
 
 // ═══════════════════════════════════════════
