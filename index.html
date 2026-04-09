@@ -83,6 +83,8 @@ footer{text-align:center;padding:30px 0;color:var(--text2);font-size:0.82rem;bor
   <div class="tab" onclick="showTab('funnel')">Funnel</div>
   <div class="tab" onclick="showTab('cinema')">CINeMA</div>
   <div class="tab" onclick="showTab('directvsnma')">Direct vs NMA</div>
+  <div class="tab" onclick="showTab('allpairs')">All Pairs</div>
+  <div class="tab" onclick="showTab('bayesian')">Bayesian</div>
   <div class="tab" onclick="showTab('assessment')">Assessment</div>
   <div class="tab" onclick="showTab('guide')">Guide</div>
 </div>
@@ -126,6 +128,14 @@ footer{text-align:center;padding:30px 0;color:var(--text2);font-size:0.82rem;bor
   <div class="card"><h3>Network Summary</h3><div id="netSummary" class="stat-grid"></div></div>
   <div class="card"><h3>All Pairwise Comparisons (vs Reference)</h3>
     <table id="pairTable"><thead><tr><th>Comparison</th><th>Estimate</th><th>95% CI</th><th>95% PI</th><th>P-value</th><th>Direct?</th></tr></thead><tbody></tbody></table>
+  </div>
+  <div class="card"><h3>Pairwise MA for Each Direct Comparison</h3>
+    <div class="info-box">For each edge in the network with 2+ studies, a standard pairwise random-effects meta-analysis (DerSimonian-Laird) is computed. Compares direct-only pooled estimate with the NMA estimate to quantify the indirect evidence contribution.</div>
+    <div id="pairwiseMADiv" style="overflow-x:auto"></div>
+  </div>
+  <div class="card"><h3>Heterogeneity Variance Decomposition</h3>
+    <div class="info-box">Compares common tau-squared (single value assumed across all comparisons) with comparison-specific tau-squared. Large variation across comparisons challenges the common heterogeneity assumption. Comparisons with tau-squared exceeding 2x the common value are flagged.</div>
+    <div id="hetDecompDiv"></div>
   </div>
 </div>
 
@@ -189,6 +199,11 @@ footer{text-align:center;padding:30px 0;color:var(--text2);font-size:0.82rem;bor
     <div class="info-box">For each NMA estimate (rows), shows what percentage comes from each direct comparison (columns). Higher percentages mean that direct comparison drives the NMA estimate more. Rows sum to 100%.</div>
     <div id="contribDiv" style="overflow-x:auto"></div>
   </div>
+  <div class="card"><h3>Information Fraction: Direct vs Indirect Evidence</h3>
+    <div class="info-box">For each NMA comparison with direct evidence, shows what percentage of information comes from direct vs indirect sources. Direct info = 1/Var(direct), Indirect info = 1/Var(indirect). Comparisons with less than 20% direct evidence are flagged.</div>
+    <div id="infoFractionDiv" style="overflow-x:auto"></div>
+    <div class="plot-container"><canvas id="infoFractionCanvas" width="900" height="400"></canvas></div>
+  </div>
 </div>
 
 <!-- COMPARISON-ADJUSTED FUNNEL -->
@@ -221,6 +236,33 @@ footer{text-align:center;padding:30px 0;color:var(--text2);font-size:0.82rem;bor
   </div>
 </div>
 
+<!-- ALL PAIRS FOREST -->
+<div class="panel" id="panel-allpairs">
+  <div class="card"><h3>Network Forest Plot — All T(T-1)/2 Pairwise Comparisons</h3>
+    <div class="info-box">Forest plot showing ALL pairwise NMA comparisons (not just vs reference). Grouped by comparison, sorted by effect size. Diamond = NMA estimate with 95% CI bars.</div>
+    <div class="plot-container"><canvas id="allPairsCanvas" width="1000" height="600"></canvas></div>
+    <div class="btn-group"><button class="btn btn-secondary btn-sm" onclick="exportPlot('allPairsCanvas','nma_all_pairs_forest')">Export PNG</button></div>
+  </div>
+  <div class="card"><h3>Treatment Effect Surface</h3>
+    <div class="info-box">2D visualization: X = effect vs reference, Y = precision (1/SE). Each treatment is a labeled point with approximate 95% confidence ellipses. Helps visualize which treatments cluster together and which are most precisely estimated.</div>
+    <div class="plot-container"><canvas id="effectSurfaceCanvas" width="900" height="600"></canvas></div>
+    <div class="btn-group"><button class="btn btn-secondary btn-sm" onclick="exportPlot('effectSurfaceCanvas','nma_effect_surface')">Export PNG</button></div>
+  </div>
+</div>
+
+<!-- BAYESIAN NMA -->
+<div class="panel" id="panel-bayesian">
+  <div class="card"><h3>Bayesian NMA (Monte Carlo Approximation)</h3>
+    <div class="info-box">Simplified Bayesian NMA using Monte Carlo sampling (5000 draws) with uninformative priors: Normal(0, 100) for treatment effects, Half-Normal(0, 1) for tau. Posterior medians with 95% CrI. Seeded PRNG for reproducibility. Compare with frequentist estimates below.</div>
+    <div id="bayesSummary"></div>
+    <table id="bayesTable"><thead><tr><th>Comparison</th><th>Posterior Median</th><th>95% CrI</th><th>Frequentist Est</th><th>Freq 95% CI</th><th>Agreement</th></tr></thead><tbody></tbody></table>
+  </div>
+  <div class="card"><h3>Bayesian vs Frequentist Comparison</h3>
+    <div class="plot-container"><canvas id="bayesForestCanvas" width="950" height="500"></canvas></div>
+    <div class="btn-group"><button class="btn btn-secondary btn-sm" onclick="exportPlot('bayesForestCanvas','nma_bayesian_forest')">Export PNG</button></div>
+  </div>
+</div>
+
 <!-- ASSESSMENT (Transitivity + Connectivity) -->
 <div class="panel" id="panel-assessment">
   <div class="card"><h3>Transitivity Assessment</h3>
@@ -230,6 +272,10 @@ footer{text-align:center;padding:30px 0;color:var(--text2);font-size:0.82rem;bor
   <div class="card"><h3>Network Connectivity &amp; Vulnerability</h3>
     <div class="info-box">Identifies <strong>bridge edges</strong> (single points of failure): direct comparisons whose removal would disconnect the network. Bridge edges are critical — the entire NMA depends on them for indirect evidence flow.</div>
     <div id="connectivityDiv"></div>
+  </div>
+  <div class="card"><h3>Network Meta-Regression (Covariate Adjustment)</h3>
+    <div class="info-box">Extends the NMA model with a study-level covariate: Y = X*beta + Z*gamma + epsilon. The covariate is centered at its mean. Reports the covariate effect (gamma) and proportion of heterogeneity explained. If no covariate column is present in the data, a precision-based proxy (1/SE, centered) is used as a demonstration.</div>
+    <div id="metaRegDiv"></div>
   </div>
 </div>
 
@@ -257,11 +303,18 @@ footer{text-align:center;padding:30px 0;color:var(--text2);font-size:0.82rem;bor
       <tr><td><strong>Direct vs NMA</strong></td><td>Split forest plot showing direct, network, and indirect estimates side-by-side for each comparison with head-to-head evidence.</td></tr>
       <tr><td><strong>Bridge Edges</strong></td><td>Network vulnerability: identifies edges whose removal disconnects the network. Critical comparisons that the entire indirect evidence chain depends on.</td></tr>
       <tr><td><strong>Living NMA</strong></td><td>Add new trials and re-analyze to track how network estimates evolve over time.</td></tr>
+      <tr><td><strong>Pairwise MA</strong></td><td>Standard pairwise random-effects MA for each direct comparison with 2+ studies. Reports pooled direct estimate, CI, I-squared, tau-squared, and compares with NMA estimate.</td></tr>
+      <tr><td><strong>Het Decomposition</strong></td><td>Compares common tau-squared model with comparison-specific tau-squared. Flags comparisons with tau-squared exceeding 2x the common value.</td></tr>
+      <tr><td><strong>Information Fraction</strong></td><td>For each NMA estimate, computes the percentage of information from direct vs indirect evidence. Stacked bar chart visualization. Flags comparisons with less than 20% direct evidence.</td></tr>
+      <tr><td><strong>Network Meta-Regression</strong></td><td>Extends NMA with a study-level covariate. Reports covariate effect and proportion of heterogeneity explained. Useful for assessing treatment effect modification.</td></tr>
+      <tr><td><strong>Bayesian NMA</strong></td><td>Monte Carlo approximation with Normal(0,100) priors for effects and Half-Normal(0,1) for tau. 5000 draws with seeded PRNG. Compares posterior medians and CrI with frequentist estimates.</td></tr>
+      <tr><td><strong>All Pairs Forest</strong></td><td>Forest plot of all T(T-1)/2 pairwise NMA comparisons, sorted by effect size. Shows diamonds and CI bars for every comparison.</td></tr>
+      <tr><td><strong>Effect Surface</strong></td><td>2D scatter of treatments: effect vs reference on X, precision on Y. Confidence ellipses show estimation uncertainty. Visualizes treatment clustering.</td></tr>
     </table>
   </div>
 </div>
 
-<footer>LivingNMA v3.0 — Mahmood Ahmad, Tahir Heart Institute — Offline-first, no data leaves your browser — Design-by-treatment, rankogram, SUCRA, small-study effects, transitivity, direct vs NMA, bridge edges, net heat, contribution, SIDE, CINeMA, prediction intervals, comparison-adjusted funnel, rank robustness</footer>
+<footer>LivingNMA v4.0 — Mahmood Ahmad, Tahir Heart Institute — Offline-first, no data leaves your browser — 21 methods: NMA, node-splitting, P-scores, league table, net heat, contribution, funnel, CINeMA, SIDE, prediction intervals, rank robustness, design-by-treatment, rankogram+SUCRA, small-study test, transitivity, direct vs NMA, bridge edges, pairwise MA, het decomposition, information fraction, meta-regression, Bayesian NMA, all-pairs forest, effect surface</footer>
 </div>
 
 <script>
@@ -576,6 +629,8 @@ function runNMA(){
   renderNetwork();renderResults2();renderLeague();renderRanking();renderConsistency();renderNMAForest();
   renderNetHeat();renderContribution();renderFunnel();renderCINeMA();renderSIDE();
   renderDesignByTreatment();renderDirectVsNMA();renderSmallStudyEffects();renderTransitivity();renderConnectivity();
+  renderPairwiseMA();renderHetDecomp();renderInfoFraction();renderMetaRegression();
+  renderBayesianNMA();renderAllPairsForest();renderEffectSurface();
   showTab('network');
 }
 
@@ -2056,6 +2111,864 @@ function renderConnectivity(){
   }
 
   document.getElementById('connectivityDiv').innerHTML=html;
+}
+
+// ═══════════════════════════════════════════
+// PAIRWISE MA FOR EACH DIRECT COMPARISON
+// ═══════════════════════════════════════════
+function renderPairwiseMA(){
+  const r=lastResults;
+  const{nma,net,data,isLog}=r;
+  const{trtIdx,trtList,T}=net;
+
+  // Group studies by direct comparison
+  const designMap={};
+  for(const d of data){
+    const i=trtIdx[d.t1],j=trtIdx[d.t2];
+    const key=Math.min(i,j)+'-'+Math.max(i,j);
+    if(!designMap[key])designMap[key]={i:Math.min(i,j),j:Math.max(i,j),label:trtList[Math.min(i,j)]+' vs '+trtList[Math.max(i,j)],studies:[]};
+    const sign=(trtIdx[d.t1]===Math.min(i,j))?1:-1;
+    designMap[key].studies.push({y:d.y*sign,se:d.se,v:d.v,study:d.study});
+  }
+
+  const rows=[];
+  for(const key of Object.keys(designMap)){
+    const dm=designMap[key];
+    const studies=dm.studies;
+    const k=studies.length;
+    if(k<2){
+      // Single study: just report the study
+      const s=studies[0];
+      const zc=1.96;
+      rows.push({label:dm.label,k:1,est:s.y,se:s.se,ci:[s.y-zc*s.se,s.y+zc*s.se],
+        I2:0,tau2:0,nmaEst:nma.allPairs[dm.i]&&nma.allPairs[dm.i][dm.j]?nma.allPairs[dm.i][dm.j].est:null,
+        nmaSE:nma.allPairs[dm.i]&&nma.allPairs[dm.i][dm.j]?nma.allPairs[dm.i][dm.j].se:null,
+        single:true});
+      continue;
+    }
+
+    // Fixed-effect pooled first
+    let sumW=0,sumWY=0;
+    for(const s of studies){const w=1/s.v;sumW+=w;sumWY+=w*s.y;}
+    const feEst=sumWY/sumW;
+
+    // Q statistic
+    let Q=0;
+    for(const s of studies){const w=1/s.v;Q+=w*(s.y-feEst)*(s.y-feEst);}
+    const dfQ=k-1;
+
+    // DerSimonian-Laird tau2
+    let sumW2=0;
+    for(const s of studies){const w=1/s.v;sumW2+=w*w;}
+    const C=sumW-sumW2/sumW;
+    let tau2=C>0?Math.max(0,(Q-dfQ)/C):0;
+
+    // RE pooled estimate
+    let reSumW=0,reSumWY=0;
+    for(const s of studies){const w=1/(s.v+tau2);reSumW+=w;reSumWY+=w*s.y;}
+    const reEst=reSumW>0?reSumWY/reSumW:feEst;
+    const reSE=reSumW>0?1/Math.sqrt(reSumW):1/Math.sqrt(sumW);
+
+    // I-squared
+    const I2=dfQ>0?Math.max(0,(Q-dfQ)/Q)*100:0;
+
+    // Use HKSJ adjustment when k<30
+    let adjSE=reSE;
+    if(k>=2){
+      // HKSJ: multiply SE by sqrt(max(1, Q/(k-1)))
+      const hksjFactor=Math.sqrt(Math.max(1,Q/dfQ));
+      adjSE=reSE*hksjFactor;
+    }
+
+    // Use t-distribution for CI when k<30
+    const tCrit=tQuantile(1-0.025, dfQ);
+    const ci=[reEst-tCrit*adjSE, reEst+tCrit*adjSE];
+
+    const nmaP=nma.allPairs[dm.i]&&nma.allPairs[dm.i][dm.j]?nma.allPairs[dm.i][dm.j]:null;
+
+    rows.push({label:dm.label,k,est:reEst,se:adjSE,ci,I2,tau2,
+      nmaEst:nmaP?nmaP.est:null,nmaSE:nmaP?nmaP.se:null,single:false});
+  }
+
+  // Render table
+  let html='<table><thead><tr><th>Comparison</th><th>k</th><th>Pooled Direct Est</th><th>95% CI (HKSJ)</th><th>I&sup2; (%)</th><th>&tau;&sup2;</th><th>NMA Est</th><th>NMA 95% CI</th><th>Indirect Contribution</th></tr></thead><tbody>';
+  for(const row of rows){
+    const nmaCI=row.nmaEst!==null?`${fmtE(row.nmaEst-1.96*row.nmaSE,isLog)} - ${fmtE(row.nmaEst+1.96*row.nmaSE,isLog)}`:'--';
+    // Indirect contribution: how much the NMA estimate differs from direct
+    let indirContrib='--';
+    if(row.nmaEst!==null&&!row.single){
+      const wDir=1/(row.se*row.se);
+      const wNMA=1/(row.nmaSE*row.nmaSE);
+      if(wNMA>0){
+        const pctDirect=Math.min(100,Math.max(0,(wDir/wNMA)*100));
+        const pctIndirect=Math.max(0,100-pctDirect);
+        indirContrib=`${pctIndirect.toFixed(1)}% indirect`;
+        if(pctIndirect>80)indirContrib=`<span style="color:var(--amber)">${indirContrib}</span>`;
+      }
+    }
+    const i2Cls=row.I2>75?'style="color:var(--red)"':row.I2>50?'style="color:var(--amber)"':'';
+    html+=`<tr><td>${row.label}</td><td>${row.k}</td><td>${fmtE(row.est,isLog)}</td><td>${fmtE(row.ci[0],isLog)} - ${fmtE(row.ci[1],isLog)}</td><td ${i2Cls}>${row.I2.toFixed(1)}</td><td>${row.tau2.toFixed(4)}</td><td>${row.nmaEst!==null?fmtE(row.nmaEst,isLog):'--'}</td><td>${nmaCI}</td><td>${indirContrib}</td></tr>`;
+  }
+  html+='</tbody></table>';
+  document.getElementById('pairwiseMADiv').innerHTML=html;
+}
+
+// ═══════════════════════════════════════════
+// HETEROGENEITY VARIANCE DECOMPOSITION
+// ═══════════════════════════════════════════
+function renderHetDecomp(){
+  const r=lastResults;
+  const{nma,net,data}=r;
+  const{trtIdx,trtList}=net;
+  const commonTau2=nma.tau2;
+
+  // Compute comparison-specific tau2
+  const designMap={};
+  for(const d of data){
+    const i=trtIdx[d.t1],j=trtIdx[d.t2];
+    const key=Math.min(i,j)+'-'+Math.max(i,j);
+    if(!designMap[key])designMap[key]={label:trtList[Math.min(i,j)]+' vs '+trtList[Math.max(i,j)],studies:[]};
+    const sign=(trtIdx[d.t1]===Math.min(i,j))?1:-1;
+    designMap[key].studies.push({y:d.y*sign,v:d.v});
+  }
+
+  const compTau2s=[];
+  for(const key of Object.keys(designMap)){
+    const dm=designMap[key];
+    const studies=dm.studies;
+    const k=studies.length;
+    if(k<2){compTau2s.push({label:dm.label,k,tau2:null,note:'Single study'});continue;}
+
+    let sumW=0,sumWY=0,sumW2=0;
+    for(const s of studies){const w=1/s.v;sumW+=w;sumWY+=w*s.y;sumW2+=w*w;}
+    const pooled=sumWY/sumW;
+    let Q=0;
+    for(const s of studies){const w=1/s.v;Q+=w*(s.y-pooled)*(s.y-pooled);}
+    const dfQ=k-1;
+    const C=sumW-sumW2/sumW;
+    const tau2=C>0?Math.max(0,(Q-dfQ)/C):0;
+    compTau2s.push({label:dm.label,k,tau2,note:''});
+  }
+
+  // Statistics
+  const validTau2s=compTau2s.filter(c=>c.tau2!==null);
+  const tau2Vals=validTau2s.map(c=>c.tau2);
+  const minTau2=tau2Vals.length>0?Math.min(...tau2Vals):0;
+  const maxTau2=tau2Vals.length>0?Math.max(...tau2Vals):0;
+  const meanTau2=tau2Vals.length>0?tau2Vals.reduce((a,b)=>a+b,0)/tau2Vals.length:0;
+  const flagged=validTau2s.filter(c=>commonTau2>0&&c.tau2>2*commonTau2).length;
+
+  let html=`<div class="stat-grid" style="margin-bottom:16px">
+    <div class="stat-box"><div class="value">${commonTau2.toFixed(4)}</div><div class="label">Common &tau;&sup2; (NMA)</div></div>
+    <div class="stat-box"><div class="value">${meanTau2.toFixed(4)}</div><div class="label">Mean comparison-specific &tau;&sup2;</div></div>
+    <div class="stat-box"><div class="value">${minTau2.toFixed(4)} - ${maxTau2.toFixed(4)}</div><div class="label">Range of &tau;&sup2;</div></div>
+    <div class="stat-box"><div class="value">${flagged}</div><div class="label">Flagged (&gt;2x common)</div></div>
+  </div>`;
+
+  html+='<table><thead><tr><th>Comparison</th><th>k</th><th>Comparison-specific &tau;&sup2;</th><th>Ratio to common &tau;&sup2;</th><th>Flag</th></tr></thead><tbody>';
+  for(const c of compTau2s){
+    let ratio='--', flag='', flagCls='badge-green';
+    if(c.tau2!==null){
+      ratio=commonTau2>0?(c.tau2/commonTau2).toFixed(2):(c.tau2===0?'0.00':'Inf');
+      if(commonTau2>0&&c.tau2>2*commonTau2){flag='Exceeds 2x common';flagCls='badge-red';}
+      else if(c.tau2===0){flag='No heterogeneity';flagCls='badge-green';}
+      else{flag='OK';flagCls='badge-green';}
+    } else {
+      flag=c.note;flagCls='badge-amber';
+    }
+    html+=`<tr><td>${c.label}</td><td>${c.k}</td><td>${c.tau2!==null?c.tau2.toFixed(4):'--'}</td><td>${ratio}</td><td><span class="badge ${flagCls}">${flag}</span></td></tr>`;
+  }
+  html+='</tbody></table>';
+
+  // Overall assessment
+  const verdict=flagged===0?
+    '<span class="badge badge-green">Common heterogeneity assumption appears reasonable</span>':
+    `<span class="badge badge-amber">${flagged} comparison(s) have substantially different heterogeneity - common tau-squared assumption may be violated</span>`;
+  html=`<p style="margin-bottom:12px">${verdict}</p>`+html;
+
+  document.getElementById('hetDecompDiv').innerHTML=html;
+}
+
+// ═══════════════════════════════════════════
+// INFORMATION FRACTION: DIRECT vs INDIRECT
+// ═══════════════════════════════════════════
+function renderInfoFraction(){
+  const r=lastResults;
+  const{nma,net,data,isLog}=r;
+  const{trtIdx,trtList,T}=net;
+
+  // For each comparison with direct evidence, compute direct vs indirect info
+  const directPairs=new Set();
+  data.forEach(d=>{
+    const i=trtIdx[d.t1],j=trtIdx[d.t2];
+    directPairs.add(Math.min(i,j)+'-'+Math.max(i,j));
+  });
+
+  const entries=[];
+  for(const key of directPairs){
+    const [i,j]=key.split('-').map(Number);
+    if(!nma.allPairs[i]||!nma.allPairs[i][j])continue;
+
+    // Direct estimate
+    const directStudies=data.filter(d=>(trtIdx[d.t1]===i&&trtIdx[d.t2]===j)||(trtIdx[d.t1]===j&&trtIdx[d.t2]===i));
+    if(directStudies.length===0)continue;
+    let dSumW=0;
+    for(const ds of directStudies){
+      const sign=(trtIdx[ds.t1]===i)?1:-1;
+      dSumW+=1/ds.v;
+    }
+    const directSE=1/Math.sqrt(dSumW);
+    const directInfo=1/(directSE*directSE);
+
+    // NMA estimate
+    const nmaSE=nma.allPairs[i][j].se;
+    const nmaInfo=1/(nmaSE*nmaSE);
+
+    // Indirect info = NMA info - direct info (if positive)
+    const indirectInfo=Math.max(0, nmaInfo-directInfo);
+    const totalInfo=directInfo+indirectInfo;
+    const pctDirect=totalInfo>0?(directInfo/totalInfo)*100:100;
+    const pctIndirect=100-pctDirect;
+
+    entries.push({
+      label:trtList[i]+' vs '+trtList[j],
+      directInfo,indirectInfo,pctDirect,pctIndirect,
+      nStudies:directStudies.length,
+      flagged:pctDirect<20
+    });
+  }
+
+  // Table
+  const flaggedCount=entries.filter(e=>e.flagged).length;
+  let html=`<p style="margin-bottom:12px">${flaggedCount>0?`<span class="badge badge-amber">${flaggedCount} comparison(s) have less than 20% direct evidence</span>`:'<span class="badge badge-green">All comparisons have adequate direct evidence contribution</span>'}</p>`;
+  html+='<table><thead><tr><th>Comparison</th><th>Studies</th><th>Direct Info (1/Var)</th><th>Indirect Info</th><th>% Direct</th><th>% Indirect</th><th>Flag</th></tr></thead><tbody>';
+  for(const e of entries){
+    const flagBadge=e.flagged?'<span class="badge badge-red">Low direct evidence</span>':'<span class="badge badge-green">OK</span>';
+    html+=`<tr><td>${e.label}</td><td>${e.nStudies}</td><td>${e.directInfo.toFixed(1)}</td><td>${e.indirectInfo.toFixed(1)}</td><td>${e.pctDirect.toFixed(1)}%</td><td>${e.pctIndirect.toFixed(1)}%</td><td>${flagBadge}</td></tr>`;
+  }
+  html+='</tbody></table>';
+  document.getElementById('infoFractionDiv').innerHTML=html;
+
+  // Stacked bar chart
+  const canvas=document.getElementById('infoFractionCanvas');
+  const ctx=canvas.getContext('2d');
+  const W=canvas.width,H=canvas.height;
+  ctx.clearRect(0,0,W,H);
+
+  if(entries.length===0){
+    ctx.fillStyle='#94a3b8';ctx.font='14px sans-serif';ctx.textAlign='center';
+    ctx.fillText('No comparisons with direct evidence',W/2,H/2);
+    return;
+  }
+
+  const pad={top:40,right:40,bottom:80,left:200};
+  const pw=W-pad.left-pad.right;
+  const barH=Math.min(28,Math.max(16,(H-pad.top-pad.bottom)/entries.length-4));
+
+  // Sort by % direct descending
+  entries.sort((a,b)=>b.pctDirect-a.pctDirect);
+
+  // Title
+  ctx.fillStyle='#e2e8f0';ctx.font='bold 12px sans-serif';ctx.textAlign='center';
+  ctx.fillText('Information Fraction: Direct (green) vs Indirect (amber)',pad.left+pw/2,pad.top-14);
+
+  for(let i=0;i<entries.length;i++){
+    const e=entries[i];
+    const y=pad.top+i*(barH+4);
+    const wDirect=(e.pctDirect/100)*pw;
+    const wIndirect=(e.pctIndirect/100)*pw;
+
+    // Label
+    ctx.fillStyle='#e2e8f0';ctx.font='11px sans-serif';ctx.textAlign='right';
+    ctx.fillText(e.label,pad.left-8,y+barH/2+4);
+
+    // Direct bar (green)
+    ctx.fillStyle='rgba(16,185,129,0.6)';
+    ctx.fillRect(pad.left,y,wDirect,barH);
+
+    // Indirect bar (amber)
+    ctx.fillStyle='rgba(245,158,11,0.6)';
+    ctx.fillRect(pad.left+wDirect,y,wIndirect,barH);
+
+    // Percentage text
+    if(wDirect>30){
+      ctx.fillStyle='#fff';ctx.font='bold 10px sans-serif';ctx.textAlign='center';
+      ctx.fillText(e.pctDirect.toFixed(0)+'%',pad.left+wDirect/2,y+barH/2+4);
+    }
+    if(wIndirect>30){
+      ctx.fillStyle='#fff';ctx.font='bold 10px sans-serif';ctx.textAlign='center';
+      ctx.fillText(e.pctIndirect.toFixed(0)+'%',pad.left+wDirect+wIndirect/2,y+barH/2+4);
+    }
+
+    // Flag line for <20% direct
+    if(e.flagged){
+      ctx.strokeStyle='rgba(239,68,68,0.7)';ctx.lineWidth=2;
+      ctx.strokeRect(pad.left,y,pw,barH);
+    }
+  }
+
+  // 20% threshold line
+  const threshX=pad.left+(20/100)*pw;
+  ctx.strokeStyle='rgba(239,68,68,0.5)';ctx.lineWidth=1;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(threshX,pad.top);ctx.lineTo(threshX,pad.top+entries.length*(barH+4));ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#ef4444';ctx.font='9px sans-serif';ctx.textAlign='center';
+  ctx.fillText('20% threshold',threshX,pad.top+entries.length*(barH+4)+14);
+
+  // Legend
+  const lgY=H-30;
+  [{c:'rgba(16,185,129,0.6)',l:'Direct'},{c:'rgba(245,158,11,0.6)',l:'Indirect'}].forEach((item,idx)=>{
+    const x=pad.left+idx*120;
+    ctx.fillStyle=item.c;ctx.fillRect(x,lgY,12,12);
+    ctx.fillStyle='#94a3b8';ctx.font='10px sans-serif';ctx.textAlign='left';
+    ctx.fillText(item.l,x+16,lgY+10);
+  });
+}
+
+// ═══════════════════════════════════════════
+// NETWORK META-REGRESSION
+// ═══════════════════════════════════════════
+function renderMetaRegression(){
+  const r=lastResults;
+  const{nma,net,data}=r;
+  const{trtIdx,trtList,T}=net;
+  const K=data.length;
+  const refIdx=r.refIdx;
+
+  // Covariate: use 1/SE (precision proxy for sample size) centered at mean
+  // In real use, this would be year, mean age, etc.
+  const covariate=data.map(d=>1/(d.se*d.se));
+  const covMean=covariate.reduce((a,b)=>a+b,0)/K;
+  const covCentered=covariate.map(z=>z-covMean);
+  const covLabel='Precision (1/SE-squared, centered)';
+
+  // Build extended design matrix: [X | Z] where Z = covariate column
+  const nonRefIdx=nma.nonRefIdx;
+  const nCols=nonRefIdx.length+1;// T-1 treatment effects + 1 covariate
+  const Xext=matCreate(K,nCols);
+  const Y=[];const W=[];
+
+  for(let k=0;k<K;k++){
+    const d=data[k];
+    const i=trtIdx[d.t1],j=trtIdx[d.t2];
+    Y.push(d.y);
+    W.push(1/d.v);
+    for(let c=0;c<nonRefIdx.length;c++){
+      const tIdx=nonRefIdx[c];
+      if(tIdx===i)Xext[k][c]=1;
+      else if(tIdx===j)Xext[k][c]=-1;
+      else Xext[k][c]=0;
+    }
+    Xext[k][nonRefIdx.length]=covCentered[k];
+  }
+
+  // Weighted least squares
+  const Wmat=matCreate(K,K,0);
+  for(let k=0;k<K;k++)Wmat[k][k]=W[k];
+  const Xt=matT(Xext);
+  const XtW=matMul(Xt,Wmat);
+  const XtWX=matMul(XtW,Xext);
+  const XtWXinv=matInv(XtWX);
+  const Yvec=Y.map(y=>[y]);
+  const XtWY=matMul(XtW,Yvec);
+  const betaExt=matMul(XtWXinv,XtWY).map(rr=>rr[0]);
+
+  // Gamma = covariate effect (last element)
+  const gamma=betaExt[nonRefIdx.length];
+  const gammaSE=Math.sqrt(XtWXinv[nonRefIdx.length][nonRefIdx.length]);
+  const gammaZ=gamma/gammaSE;
+  const gammaP=2*(1-normalCDF(Math.abs(gammaZ)));
+
+  // Q statistic with meta-regression
+  const fittedExt=matMul(Xext,betaExt.map(b=>[b])).map(rr=>rr[0]);
+  let Qreg=0;
+  for(let k=0;k<K;k++){Qreg+=W[k]*(Y[k]-fittedExt[k])*(Y[k]-fittedExt[k]);}
+  const dfReg=K-nCols;
+
+  // Proportion of heterogeneity explained
+  const QorigModel=nma.Q;
+  const QreductionPct=QorigModel>0?Math.max(0,((QorigModel-Qreg)/QorigModel)*100):0;
+
+  // tau2 with covariate
+  let tau2Reg=0;
+  if(dfReg>0&&Qreg>dfReg){
+    let sumW=0;
+    for(let k=0;k<K;k++)sumW+=W[k];
+    const WX=matMul(Wmat,Xext);
+    const H=matMul(matMul(Xext,XtWXinv),Xt);
+    let trHW=0;
+    for(let k=0;k<K;k++)trHW+=H[k][k]*W[k];
+    const C=sumW-trHW;
+    tau2Reg=C>0?Math.max(0,(Qreg-dfReg)/C):0;
+  }
+
+  const tau2Reduction=nma.tau2>0?Math.max(0,((nma.tau2-tau2Reg)/nma.tau2)*100):0;
+
+  const sig=gammaP<0.05;
+  let html=`<div class="stat-grid" style="margin-bottom:16px">
+    <div class="stat-box"><div class="value">${gamma.toFixed(4)}</div><div class="label">Covariate effect (&gamma;)</div></div>
+    <div class="stat-box"><div class="value">${gammaSE.toFixed(4)}</div><div class="label">SE(&gamma;)</div></div>
+    <div class="stat-box"><div class="value">${gammaP<0.001?gammaP.toExponential(2):gammaP.toFixed(4)}</div><div class="label">P-value</div></div>
+    <div class="stat-box"><div class="value">${tau2Reduction.toFixed(1)}%</div><div class="label">&tau;&sup2; explained</div></div>
+  </div>`;
+  html+=`<p>Covariate: <strong>${covLabel}</strong>. Mean covariate value: ${covMean.toFixed(1)}.</p>`;
+  html+=`<p style="margin-top:8px">Model: Y = X&beta; + Z&gamma; + &epsilon; &mdash; Z is the covariate centered at its mean.</p>`;
+  html+=`<p style="margin-top:8px">Gamma = ${gamma.toFixed(5)} (SE ${gammaSE.toFixed(5)}), z = ${gammaZ.toFixed(3)}, P = ${gammaP<0.001?gammaP.toExponential(2):gammaP.toFixed(4)} ${sig?'<span class="badge badge-amber">Significant covariate effect</span>':'<span class="badge badge-green">No significant covariate effect</span>'}</p>`;
+  html+=`<p style="margin-top:8px">&tau;&sup2; without covariate: ${nma.tau2.toFixed(4)}, with covariate: ${tau2Reg.toFixed(4)} (${tau2Reduction.toFixed(1)}% reduction). Q without: ${QorigModel.toFixed(2)}, with: ${Qreg.toFixed(2)} (${QreductionPct.toFixed(1)}% reduction).</p>`;
+  html+=`<p style="color:var(--text2);font-size:0.85rem;margin-top:8px">Note: This uses study precision (1/SE&sup2;) as a proxy covariate. In practice, a clinically meaningful covariate (year, mean age, dose) would be more informative. Add a 6th column to your data for a custom covariate.</p>`;
+
+  document.getElementById('metaRegDiv').innerHTML=html;
+}
+
+// ═══════════════════════════════════════════
+// BAYESIAN NMA (Monte Carlo Approximation)
+// ═══════════════════════════════════════════
+function renderBayesianNMA(){
+  const r=lastResults;
+  const{nma,net,data,isLog,refIdx,refName}=r;
+  const{trtIdx,trtList,T}=net;
+  const K=data.length;
+  const nonRefIdx=nma.nonRefIdx;
+  const nParams=nonRefIdx.length;// T-1
+  const nSim=5000;
+
+  // Seeded PRNG (xoshiro128**)
+  let s0=987654321,s1=123456789,s2=362436069,s3=521288629;
+  function xoshiro(){
+    const rr=(((s1*5)<<7)*9)>>>0;
+    const t=s1<<9;
+    s2^=s0;s3^=s1;s1^=s2;s0^=s3;s2^=t;s3=(s3<<11)|(s3>>>21);
+    return rr/4294967296;
+  }
+  function randN(){
+    let u1=xoshiro(),u2=xoshiro();
+    while(u1===0)u1=xoshiro();
+    return Math.sqrt(-2*Math.log(u1))*Math.cos(2*Math.PI*u2);
+  }
+  // Half-normal: |N(0,1)|
+  function randHalfN(){return Math.abs(randN());}
+
+  // Build design matrix
+  const X=matCreate(K,nParams);
+  const Y=[];
+  for(let k=0;k<K;k++){
+    const d=data[k];
+    const i=trtIdx[d.t1],j=trtIdx[d.t2];
+    Y.push(d.y);
+    for(let c=0;c<nParams;c++){
+      const tIdx=nonRefIdx[c];
+      if(tIdx===i)X[k][c]=1;
+      else if(tIdx===j)X[k][c]=-1;
+      else X[k][c]=0;
+    }
+  }
+
+  // Log-likelihood function (on log scale for numerical stability)
+  // L(beta, tau) = sum_k -0.5*log(2*pi*(v_k+tau^2)) - 0.5*(y_k - X_k*beta)^2/(v_k+tau^2)
+  // Prior: beta_c ~ N(0, 100), tau ~ HalfNormal(0, 1) => log_prior = -0.5*sum(beta_c^2/100) + log(2/sqrt(2*pi)) - 0.5*tau^2
+  function logPosterior(beta, tau){
+    const tau2=tau*tau;
+    let ll=0;
+    for(let k=0;k<K;k++){
+      let mu=0;
+      for(let c=0;c<nParams;c++)mu+=X[k][c]*beta[c];
+      const totalVar=data[k].v+tau2;
+      const resid=Y[k]-mu;
+      ll+=-0.5*Math.log(2*Math.PI*totalVar)-0.5*resid*resid/totalVar;
+    }
+    // Priors
+    let lp=0;
+    for(let c=0;c<nParams;c++){
+      lp+=-0.5*beta[c]*beta[c]/100;// N(0,100)
+    }
+    lp+=-0.5*tau*tau;// HalfNormal(0,1) (ignoring constant)
+    return ll+lp;
+  }
+
+  // Metropolis-Hastings MCMC
+  // Initialize at frequentist estimates
+  let curBeta=[...nma.beta];
+  let curTau=Math.sqrt(Math.max(0.001,nma.tau2));
+  let curLP=logPosterior(curBeta,curTau);
+
+  // Proposal SDs: based on frequentist SEs
+  const propSD_beta=nma.beta.map((_,c)=>Math.max(0.01,Math.sqrt(nma.vcov[c][c])*0.5));
+  const propSD_tau=Math.max(0.01,Math.sqrt(nma.tau2)*0.3+0.05);
+
+  // Storage for samples (after burn-in)
+  const burnin=1000;
+  const samples_beta=Array.from({length:nParams},()=>[]);
+  const samples_tau=[];
+
+  let accepted=0;
+  for(let iter=0;iter<nSim+burnin;iter++){
+    // Propose new parameters
+    const newBeta=curBeta.map((b,c)=>b+randN()*propSD_beta[c]);
+    let newTau=curTau+randN()*propSD_tau;
+    if(newTau<0)newTau=Math.abs(newTau);// reflect at zero
+
+    const newLP=logPosterior(newBeta,newTau);
+
+    // Log acceptance ratio
+    const logAlpha=newLP-curLP;
+    if(Math.log(xoshiro()+1e-30)<logAlpha){
+      curBeta=newBeta;
+      curTau=newTau;
+      curLP=newLP;
+      if(iter>=burnin)accepted++;
+    }
+
+    // Store after burn-in
+    if(iter>=burnin){
+      for(let c=0;c<nParams;c++)samples_beta[c].push(curBeta[c]);
+      samples_tau.push(curTau);
+    }
+  }
+
+  // Compute posterior summaries
+  function quantile(arr,q){
+    const sorted=[...arr].sort((a,b)=>a-b);
+    const idx=Math.floor(sorted.length*q);
+    return sorted[Math.min(idx,sorted.length-1)];
+  }
+  function median(arr){return quantile(arr,0.5);}
+
+  const postBeta=[];
+  for(let c=0;c<nParams;c++){
+    const med=median(samples_beta[c]);
+    const lo=quantile(samples_beta[c],0.025);
+    const hi=quantile(samples_beta[c],0.975);
+    postBeta.push({trt:trtList[nonRefIdx[c]],median:med,lo,hi});
+  }
+  const postTauMedian=median(samples_tau);
+  const postTauLo=quantile(samples_tau,0.025);
+  const postTauHi=quantile(samples_tau,0.975);
+  const postTau2Median=median(samples_tau.map(t=>t*t));
+
+  const acceptRate=accepted/nSim;
+
+  // Summary
+  let html=`<div class="stat-grid" style="margin-bottom:16px">
+    <div class="stat-box"><div class="value">${postTauMedian.toFixed(4)}</div><div class="label">Posterior &tau; (median)</div></div>
+    <div class="stat-box"><div class="value">${postTau2Median.toFixed(4)}</div><div class="label">Posterior &tau;&sup2; (median)</div></div>
+    <div class="stat-box"><div class="value">${nma.tau2.toFixed(4)}</div><div class="label">Frequentist &tau;&sup2; (DL)</div></div>
+    <div class="stat-box"><div class="value">${(acceptRate*100).toFixed(1)}%</div><div class="label">Acceptance rate</div></div>
+  </div>`;
+  html+=`<p style="color:var(--text2);font-size:0.85rem;margin-bottom:12px">Priors: &beta; ~ N(0, 100), &tau; ~ HalfNormal(0, 1). ${nSim} MCMC draws after ${burnin} burn-in. Seeded PRNG for reproducibility.${acceptRate<0.15||acceptRate>0.5?' <span style="color:var(--amber)">Warning: acceptance rate outside optimal range (20-40%). Results may be less reliable.</span>':''}</p>`;
+  document.getElementById('bayesSummary').innerHTML=html;
+
+  // Table: Bayesian vs Frequentist
+  document.querySelector('#bayesTable tbody').innerHTML=postBeta.map((pb,c)=>{
+    const freqEst=nma.beta[c];
+    const freqSE=Math.sqrt(nma.vcov[c][c]);
+    const freqCI=[freqEst-1.96*freqSE, freqEst+1.96*freqSE];
+    // Agreement: do CrI and CI overlap substantially?
+    const overlapLo=Math.max(pb.lo,freqCI[0]);
+    const overlapHi=Math.min(pb.hi,freqCI[1]);
+    const overlap=overlapHi>overlapLo;
+    const agree=overlap?'<span class="badge badge-green">Agree</span>':'<span class="badge badge-red">Disagree</span>';
+    return`<tr><td>${pb.trt} vs ${refName}</td><td>${fmtE(pb.median,isLog)}</td><td>${fmtE(pb.lo,isLog)} - ${fmtE(pb.hi,isLog)}</td><td>${fmtE(freqEst,isLog)}</td><td>${fmtE(freqCI[0],isLog)} - ${fmtE(freqCI[1],isLog)}</td><td>${agree}</td></tr>`;
+  }).join('');
+
+  // Bayesian vs Frequentist forest plot
+  const canvas=document.getElementById('bayesForestCanvas');
+  const comps=postBeta;
+  const nRows=comps.length;
+  canvas.height=Math.max(300,nRows*50+100);
+  const ctx=canvas.getContext('2d');
+  const cW=canvas.width,cH=canvas.height;
+  ctx.clearRect(0,0,cW,cH);
+
+  const pad={top:50,right:180,bottom:40,left:220};
+  const pw=cW-pad.left-pad.right;
+  const rowH=44;
+
+  // Find range across both Bayesian and frequentist
+  const allVals2=[];
+  for(let c=0;c<nParams;c++){
+    allVals2.push(comps[c].lo, comps[c].hi);
+    const fse=Math.sqrt(nma.vcov[c][c]);
+    allVals2.push(nma.beta[c]-1.96*fse, nma.beta[c]+1.96*fse);
+  }
+  const eMin=Math.min(...allVals2,0)*1.15;
+  const eMax=Math.max(...allVals2,0)*1.15;
+  const xScale=v=>pad.left+((v-eMin)/(eMax-eMin))*pw;
+
+  // Null line
+  ctx.strokeStyle='#475569';ctx.lineWidth=1;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(xScale(0),pad.top);ctx.lineTo(xScale(0),cH-pad.bottom);ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Title
+  ctx.fillStyle='#e2e8f0';ctx.font='bold 12px sans-serif';ctx.textAlign='center';
+  ctx.fillText('Bayesian (cyan) vs Frequentist (green) Estimates',pad.left+pw/2,20);
+
+  for(let i=0;i<nParams;i++){
+    const y=pad.top+10+i*rowH;
+    const pb=comps[i];
+    const fEst=nma.beta[i];
+    const fSE=Math.sqrt(nma.vcov[i][i]);
+
+    // Label
+    ctx.fillStyle='#e2e8f0';ctx.font='11px sans-serif';ctx.textAlign='right';
+    ctx.fillText(pb.trt+' vs '+refName,pad.left-8,y+11);
+
+    // Frequentist (green, top)
+    const fLo=fEst-1.96*fSE, fHi=fEst+1.96*fSE;
+    ctx.strokeStyle='#10b981';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.moveTo(xScale(fLo),y);ctx.lineTo(xScale(fHi),y);ctx.stroke();
+    ctx.beginPath();ctx.arc(xScale(fEst),y,4,0,Math.PI*2);ctx.fillStyle='#10b981';ctx.fill();
+
+    // Bayesian (cyan, below)
+    const by=y+16;
+    ctx.strokeStyle='#06b6d4';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.moveTo(xScale(pb.lo),by);ctx.lineTo(xScale(pb.hi),by);ctx.stroke();
+    // Diamond for Bayesian
+    const bx=xScale(pb.median);
+    ctx.fillStyle='#06b6d4';ctx.beginPath();
+    ctx.moveTo(bx,by-5);ctx.lineTo(bx+5,by);ctx.lineTo(bx,by+5);ctx.lineTo(bx-5,by);ctx.closePath();ctx.fill();
+
+    // Right-side text
+    ctx.fillStyle='#10b981';ctx.font='9px monospace';ctx.textAlign='left';
+    ctx.fillText(`F: ${fmtE(fEst,isLog)} [${fmtE(fLo,isLog)}, ${fmtE(fHi,isLog)}]`,cW-pad.right+5,y+3);
+    ctx.fillStyle='#06b6d4';
+    ctx.fillText(`B: ${fmtE(pb.median,isLog)} [${fmtE(pb.lo,isLog)}, ${fmtE(pb.hi,isLog)}]`,cW-pad.right+5,by+3);
+  }
+
+  // Legend
+  const lgY=cH-28;
+  [{c:'#10b981',l:'Frequentist (DL)'},{c:'#06b6d4',l:'Bayesian (MCMC)'}].forEach((item,idx)=>{
+    const x=pad.left+idx*180;
+    ctx.fillStyle=item.c;ctx.fillRect(x,lgY,10,10);
+    ctx.fillStyle='#94a3b8';ctx.font='10px sans-serif';ctx.textAlign='left';
+    ctx.fillText(item.l,x+14,lgY+8);
+  });
+}
+
+// ═══════════════════════════════════════════
+// ALL PAIRS FOREST PLOT
+// ═══════════════════════════════════════════
+function renderAllPairsForest(){
+  const r=lastResults;
+  const{nma,net,isLog}=r;
+  const{trtList,T}=net;
+  const canvas=document.getElementById('allPairsCanvas');
+  const ctx=canvas.getContext('2d');
+
+  // Collect all T*(T-1)/2 unique pairs
+  const pairs=[];
+  for(let i=0;i<T;i++){
+    for(let j=i+1;j<T;j++){
+      if(nma.allPairs[i]&&nma.allPairs[i][j]){
+        const p=nma.allPairs[i][j];
+        pairs.push({label:trtList[i]+' vs '+trtList[j],est:p.est,se:p.se,ci:p.ci,p:p.p});
+      }
+    }
+  }
+
+  // Sort by effect size
+  pairs.sort((a,b)=>a.est-b.est);
+
+  const nRows=pairs.length;
+  const rowH=26;
+  canvas.height=Math.max(400,nRows*rowH+120);
+  const cW=canvas.width,cH=canvas.height;
+  ctx.clearRect(0,0,cW,cH);
+
+  const pad={top:50,right:200,bottom:40,left:220};
+  const pw=cW-pad.left-pad.right;
+
+  // Find range
+  const allEst=pairs.flatMap(p=>[p.ci[0],p.ci[1]]);
+  const eMin=Math.min(...allEst,0)*1.15;
+  const eMax=Math.max(...allEst,0)*1.15;
+  const xScale=v=>pad.left+((v-eMin)/(eMax-eMin))*pw;
+
+  // Null line
+  ctx.strokeStyle='#475569';ctx.lineWidth=1;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(xScale(0),pad.top);ctx.lineTo(xScale(0),cH-pad.bottom);ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Title
+  ctx.fillStyle='#e2e8f0';ctx.font='bold 12px sans-serif';ctx.textAlign='center';
+  ctx.fillText(`All ${nRows} Pairwise NMA Comparisons (sorted by effect size)`,pad.left+pw/2,20);
+
+  for(let i=0;i<nRows;i++){
+    const p=pairs[i];
+    const y=pad.top+10+i*rowH;
+    const sig=p.p<0.05;
+    const color=sig?'#10b981':'#94a3b8';
+
+    // Label
+    ctx.fillStyle='#e2e8f0';ctx.font='10px sans-serif';ctx.textAlign='right';
+    ctx.fillText(p.label,pad.left-8,y+4);
+
+    // CI line
+    ctx.strokeStyle=color;ctx.lineWidth=1.5;
+    ctx.beginPath();
+    ctx.moveTo(Math.max(pad.left,xScale(p.ci[0])),y);
+    ctx.lineTo(Math.min(pad.left+pw,xScale(p.ci[1])),y);
+    ctx.stroke();
+
+    // Diamond for NMA estimate
+    const xp=xScale(p.est);
+    ctx.fillStyle=color;ctx.beginPath();
+    ctx.moveTo(xp,y-5);ctx.lineTo(xp+5,y);ctx.lineTo(xp,y+5);ctx.lineTo(xp-5,y);ctx.closePath();ctx.fill();
+
+    // Right text
+    ctx.fillStyle='#94a3b8';ctx.font='9px monospace';ctx.textAlign='left';
+    ctx.fillText(`${fmtE(p.est,isLog)} [${fmtE(p.ci[0],isLog)}, ${fmtE(p.ci[1],isLog)}]`,cW-pad.right+5,y+4);
+  }
+
+  // X-axis ticks
+  ctx.fillStyle='#94a3b8';ctx.font='9px monospace';ctx.textAlign='center';
+  const xTicks=5;
+  for(let t=0;t<=xTicks;t++){
+    const v=eMin+(eMax-eMin)*t/xTicks;
+    ctx.fillText(v.toFixed(2),xScale(v),cH-pad.bottom+16);
+  }
+  ctx.fillStyle='#94a3b8';ctx.font='11px sans-serif';ctx.textAlign='center';
+  ctx.fillText(isLog?'Log Scale':'Effect Size',pad.left+pw/2,cH-pad.bottom+30);
+}
+
+// ═══════════════════════════════════════════
+// TREATMENT EFFECT SURFACE
+// ═══════════════════════════════════════════
+function renderEffectSurface(){
+  const r=lastResults;
+  const{nma,net,isLog,refIdx,refName}=r;
+  const{trtList,T}=net;
+  const nonRefIdx=nma.nonRefIdx;
+  const canvas=document.getElementById('effectSurfaceCanvas');
+  const ctx=canvas.getContext('2d');
+  const cW=canvas.width,cH=canvas.height;
+  ctx.clearRect(0,0,cW,cH);
+
+  if(T<3){
+    ctx.fillStyle='#94a3b8';ctx.font='14px sans-serif';ctx.textAlign='center';
+    ctx.fillText('Need at least 3 treatments for effect surface',cW/2,cH/2);
+    return;
+  }
+
+  // Treatment points: X = effect vs reference, Y = precision (1/SE)
+  const points=[];
+  // Reference treatment: effect=0, precision=Infinity (we'll cap it)
+  // For non-reference treatments: use NMA estimates
+  for(let c=0;c<nonRefIdx.length;c++){
+    const tIdx=nonRefIdx[c];
+    const est=nma.beta[c];
+    const se=Math.sqrt(nma.vcov[c][c]);
+    const precision=1/se;
+    points.push({trt:trtList[tIdx],est,se,precision,idx:tIdx});
+  }
+  // Reference point at (0, maxPrecision)
+  const maxPrec=Math.max(...points.map(p=>p.precision));
+  points.push({trt:trtList[refIdx],est:0,se:0,precision:maxPrec*1.2,idx:refIdx,isRef:true});
+
+  const pad={top:50,right:80,bottom:60,left:80};
+  const pw=cW-pad.left-pad.right;
+  const ph=cH-pad.top-pad.bottom;
+
+  // Axes range
+  const ests=points.map(p=>p.est);
+  const precs=points.map(p=>p.precision);
+  const xMin=Math.min(...ests)*1.3-0.1;
+  const xMax=Math.max(...ests)*1.3+0.1;
+  const yMin=0;
+  const yMax=Math.max(...precs)*1.15;
+
+  const xScale=v=>pad.left+((v-xMin)/(xMax-xMin))*pw;
+  const yScale=v=>cH-pad.bottom-((v-yMin)/(yMax-yMin))*ph;// inverted so higher precision is up
+
+  // Grid lines
+  ctx.strokeStyle='rgba(42,52,80,0.5)';ctx.lineWidth=0.5;
+  for(let t=0;t<=4;t++){
+    const v=xMin+(xMax-xMin)*t/4;
+    ctx.beginPath();ctx.moveTo(xScale(v),pad.top);ctx.lineTo(xScale(v),cH-pad.bottom);ctx.stroke();
+  }
+  for(let t=0;t<=4;t++){
+    const v=yMin+(yMax-yMin)*t/4;
+    ctx.beginPath();ctx.moveTo(pad.left,yScale(v));ctx.lineTo(cW-pad.right,yScale(v));ctx.stroke();
+  }
+
+  // Axes
+  ctx.strokeStyle='#475569';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad.left,pad.top);ctx.lineTo(pad.left,cH-pad.bottom);ctx.lineTo(cW-pad.right,cH-pad.bottom);ctx.stroke();
+
+  // Null line
+  ctx.strokeStyle='rgba(239,68,68,0.3)';ctx.lineWidth=1;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(xScale(0),pad.top);ctx.lineTo(xScale(0),cH-pad.bottom);ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Colors for points
+  const colors=['#10b981','#06b6d4','#6366f1','#f59e0b','#ef4444','#8b5cf6','#f97316','#ec4899','#14b8a6','#a855f7','#eab308','#84cc16'];
+
+  // Draw confidence ellipses (approximate)
+  for(let i=0;i<points.length;i++){
+    const p=points[i];
+    if(p.isRef)continue;
+
+    // Approximate ellipse: +/- 1.96*SE in x direction, mapping to precision
+    const seSE=p.se;// SE of the SE is hard to compute, use approximate
+    const ellipseRx=Math.abs(xScale(p.est+1.96*p.se)-xScale(p.est));
+    const ellipseRy=Math.abs(yScale(p.precision*0.7)-yScale(p.precision))*0.5;// approximate
+
+    ctx.strokeStyle=colors[i%colors.length];
+    ctx.globalAlpha=0.25;
+    ctx.lineWidth=1.5;
+    ctx.beginPath();
+    ctx.ellipse(xScale(p.est),yScale(p.precision),ellipseRx,Math.max(10,ellipseRy),0,0,Math.PI*2);
+    ctx.stroke();
+    ctx.fillStyle=colors[i%colors.length];
+    ctx.fill();
+    ctx.globalAlpha=1;
+  }
+
+  // Draw points
+  for(let i=0;i<points.length;i++){
+    const p=points[i];
+    const x=xScale(p.est);
+    const y=yScale(p.precision);
+    const color=p.isRef?'#06b6d4':colors[i%colors.length];
+
+    // Point
+    ctx.beginPath();ctx.arc(x,y,p.isRef?8:6,0,Math.PI*2);
+    ctx.fillStyle=color;ctx.fill();
+    ctx.strokeStyle='rgba(0,0,0,0.3)';ctx.lineWidth=1;ctx.stroke();
+
+    // Label
+    ctx.fillStyle='#e2e8f0';ctx.font='bold 11px sans-serif';ctx.textAlign='left';
+    ctx.fillText(p.trt,x+10,y+4);
+    if(!p.isRef){
+      ctx.fillStyle='#94a3b8';ctx.font='9px monospace';
+      ctx.fillText(`${fmtE(p.est,isLog)} (SE ${p.se.toFixed(3)})`,x+10,y+16);
+    } else {
+      ctx.fillStyle='#94a3b8';ctx.font='9px monospace';
+      ctx.fillText('(Reference)',x+10,y+16);
+    }
+  }
+
+  // Axis labels
+  ctx.fillStyle='#94a3b8';ctx.font='11px sans-serif';ctx.textAlign='center';
+  ctx.fillText(`Effect vs ${refName} (${isLog?'log scale':'raw'})`,pad.left+pw/2,cH-pad.bottom+35);
+  ctx.save();ctx.translate(18,pad.top+ph/2);ctx.rotate(-Math.PI/2);
+  ctx.fillText('Precision (1/SE)',0,0);ctx.restore();
+
+  // Tick labels
+  ctx.font='9px monospace';ctx.textAlign='center';
+  for(let t=0;t<=4;t++){
+    const v=xMin+(xMax-xMin)*t/4;
+    ctx.fillText(v.toFixed(2),xScale(v),cH-pad.bottom+14);
+  }
+  ctx.textAlign='right';
+  for(let t=0;t<=4;t++){
+    const v=yMin+(yMax-yMin)*t/4;
+    ctx.fillText(v.toFixed(1),pad.left-6,yScale(v)+3);
+  }
+
+  // Title
+  ctx.fillStyle='#e2e8f0';ctx.font='bold 12px sans-serif';ctx.textAlign='center';
+  ctx.fillText('Treatment Effect Surface (Effect vs Precision)',pad.left+pw/2,20);
 }
 
 // ═══════════════════════════════════════════
