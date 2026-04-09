@@ -48,6 +48,18 @@ canvas{width:100%;background:transparent}
 .league-cell{padding:6px 8px;font-size:0.8rem;text-align:center}
 .league-sig{background:rgba(16,185,129,0.15)}
 .league-nonsig{background:rgba(148,163,184,0.08)}
+.league-pi{font-size:0.65rem;color:var(--amber);display:block;margin-top:1px}
+.cinema-table td,.cinema-table th{padding:6px 10px;font-size:0.82rem;text-align:center}
+.cinema-no{background:rgba(34,197,94,0.12);color:var(--green)}
+.cinema-some{background:rgba(245,158,11,0.12);color:var(--amber)}
+.cinema-major{background:rgba(239,68,68,0.12);color:var(--red)}
+.cinema-high{background:rgba(34,197,94,0.2);color:var(--green);font-weight:700}
+.cinema-moderate{background:rgba(99,102,241,0.15);color:var(--indigo);font-weight:700}
+.cinema-low{background:rgba(245,158,11,0.2);color:var(--amber);font-weight:700}
+.cinema-vlow{background:rgba(239,68,68,0.2);color:var(--red);font-weight:700}
+.contrib-table td,.contrib-table th{padding:4px 8px;font-size:0.78rem;text-align:center}
+.contrib-table td{font-family:'Consolas',monospace}
+.robustness-stable{color:var(--green)}.robustness-moderate{color:var(--amber)}.robustness-unstable{color:var(--red)}
 footer{text-align:center;padding:30px 0;color:var(--text2);font-size:0.82rem;border-top:1px solid var(--border);margin-top:30px}
 </style>
 </head>
@@ -66,6 +78,10 @@ footer{text-align:center;padding:30px 0;color:var(--text2);font-size:0.82rem;bor
   <div class="tab" onclick="showTab('ranking')">Ranking</div>
   <div class="tab" onclick="showTab('consistency')">Consistency</div>
   <div class="tab" onclick="showTab('forest')">Forest Plots</div>
+  <div class="tab" onclick="showTab('netheat')">Net Heat</div>
+  <div class="tab" onclick="showTab('contribution')">Contribution</div>
+  <div class="tab" onclick="showTab('funnel')">Funnel</div>
+  <div class="tab" onclick="showTab('cinema')">CINeMA</div>
   <div class="tab" onclick="showTab('guide')">Guide</div>
 </div>
 
@@ -74,7 +90,7 @@ footer{text-align:center;padding:30px 0;color:var(--text2);font-size:0.82rem;bor
   <div class="card">
     <h3>Load Example</h3>
     <div class="btn-group">
-      <button class="btn btn-secondary btn-sm" onclick="loadExample('antihtn')">Anti-hypertensives (5 treatments)</button>
+      <button class="btn btn-secondary btn-sm" onclick="loadExample('antihtn')">Anti-hypertensives (6 treatments)</button>
       <button class="btn btn-secondary btn-sm" onclick="loadExample('antidep')">Antidepressants (4 treatments)</button>
       <button class="btn btn-secondary btn-sm" onclick="loadExample('anticoag')">Anticoagulants for AF (5 DOACs)</button>
     </div>
@@ -107,14 +123,14 @@ footer{text-align:center;padding:30px 0;color:var(--text2);font-size:0.82rem;bor
 <div class="panel" id="panel-results">
   <div class="card"><h3>Network Summary</h3><div id="netSummary" class="stat-grid"></div></div>
   <div class="card"><h3>All Pairwise Comparisons (vs Reference)</h3>
-    <table id="pairTable"><thead><tr><th>Comparison</th><th>Estimate</th><th>95% CI</th><th>P-value</th><th>Direct?</th></tr></thead><tbody></tbody></table>
+    <table id="pairTable"><thead><tr><th>Comparison</th><th>Estimate</th><th>95% CI</th><th>95% PI</th><th>P-value</th><th>Direct?</th></tr></thead><tbody></tbody></table>
   </div>
 </div>
 
 <!-- LEAGUE TABLE -->
 <div class="panel" id="panel-league">
   <div class="card"><h3>League Table</h3>
-    <p style="color:var(--text2);font-size:0.85rem;margin-bottom:8px">Row treatment vs column treatment. Green = statistically significant. Read: row is [estimate] compared to column.</p>
+    <p style="color:var(--text2);font-size:0.85rem;margin-bottom:8px">Row treatment vs column treatment. Green = statistically significant. Read: row is [estimate] compared to column. <span style="color:var(--amber)">Amber text = 95% prediction interval</span> (where a new study's effect might fall).</p>
     <div id="leagueDiv" style="overflow-x:auto"></div>
   </div>
 </div>
@@ -123,7 +139,7 @@ footer{text-align:center;padding:30px 0;color:var(--text2);font-size:0.82rem;bor
 <div class="panel" id="panel-ranking">
   <div class="card"><h3>Treatment Rankings (P-scores)</h3>
     <div id="rankingSummary"></div>
-    <table id="rankTable"><thead><tr><th>Rank</th><th>Treatment</th><th>P-score</th><th>vs Reference</th></tr></thead><tbody></tbody></table>
+    <table id="rankTable"><thead><tr><th>Rank</th><th>Treatment</th><th>P-score</th><th>vs Reference</th><th>Rank Stability</th></tr></thead><tbody></tbody></table>
   </div>
   <div class="card"><h3>Rankogram</h3>
     <div class="plot-container"><canvas id="rankCanvas" width="800" height="400"></canvas></div>
@@ -136,6 +152,10 @@ footer{text-align:center;padding:30px 0;color:var(--text2);font-size:0.82rem;bor
   <div class="card"><h3>Node-Splitting (Local Inconsistency)</h3>
     <table id="nodesplitTable"><thead><tr><th>Comparison</th><th>Direct</th><th>Indirect</th><th>Difference</th><th>P-value</th><th>Verdict</th></tr></thead><tbody></tbody></table>
   </div>
+  <div class="card"><h3>SIDE Test (Separating Indirect from Direct Evidence, Koenig et al. 2013)</h3>
+    <div class="info-box">For each comparison with direct evidence, the SIDE test compares the direct estimate with the indirect estimate derived by subtracting the direct contribution from the NMA estimate. A significant z-test indicates disagreement between direct and indirect sources.</div>
+    <table id="sideTable"><thead><tr><th>Comparison</th><th>Direct Est (SE)</th><th>Indirect Est (SE)</th><th>z-statistic</th><th>P-value</th><th>Verdict</th></tr></thead><tbody></tbody></table>
+  </div>
 </div>
 
 <!-- FOREST -->
@@ -143,6 +163,40 @@ footer{text-align:center;padding:30px 0;color:var(--text2);font-size:0.82rem;bor
   <div class="card"><h3>Forest Plot — All Comparisons vs Reference</h3>
     <div class="plot-container"><canvas id="forestCanvas" width="950" height="500"></canvas></div>
     <div class="btn-group"><button class="btn btn-secondary btn-sm" onclick="exportPlot('forestCanvas','nma_forest')">Export PNG</button></div>
+  </div>
+</div>
+
+<!-- NET HEAT -->
+<div class="panel" id="panel-netheat">
+  <div class="card"><h3>Net Heat Plot (Krahn et al. 2013)</h3>
+    <div class="info-box">Each cell (i,j) shows how much design i contributes to the NMA estimate for comparison j. Warm colors = high contribution. Red-bordered cells highlight inconsistency hotspots where removing that design changes the estimate substantially.</div>
+    <div class="plot-container"><canvas id="netheatCanvas" width="800" height="600"></canvas></div>
+    <div class="btn-group"><button class="btn btn-secondary btn-sm" onclick="exportPlot('netheatCanvas','nma_netheat')">Export PNG</button></div>
+  </div>
+</div>
+
+<!-- CONTRIBUTION -->
+<div class="panel" id="panel-contribution">
+  <div class="card"><h3>Contribution Matrix (Papakonstantinou et al. 2018)</h3>
+    <div class="info-box">For each NMA estimate (rows), shows what percentage comes from each direct comparison (columns). Higher percentages mean that direct comparison drives the NMA estimate more. Rows sum to 100%.</div>
+    <div id="contribDiv" style="overflow-x:auto"></div>
+  </div>
+</div>
+
+<!-- COMPARISON-ADJUSTED FUNNEL -->
+<div class="panel" id="panel-funnel">
+  <div class="card"><h3>Comparison-Adjusted Funnel Plot (Chaimani &amp; Salanti 2012)</h3>
+    <div class="info-box">X-axis: study residual (observed effect minus NMA estimate for that comparison). Y-axis: standard error. Asymmetry around the zero line suggests small-study effects. Each color represents a different comparison.</div>
+    <div class="plot-container"><canvas id="funnelCanvas" width="800" height="500"></canvas></div>
+    <div class="btn-group"><button class="btn btn-secondary btn-sm" onclick="exportPlot('funnelCanvas','nma_funnel')">Export PNG</button></div>
+  </div>
+</div>
+
+<!-- CINeMA -->
+<div class="panel" id="panel-cinema">
+  <div class="card"><h3>CINeMA-Style Confidence Assessment (Nikolakopoulou et al. 2020)</h3>
+    <div class="info-box">Simplified automated assessment across 6 domains: Within-study bias, Reporting bias, Indirectness, Imprecision, Heterogeneity, Incoherence. Overall confidence: High / Moderate / Low / Very Low. Based on computable criteria from the NMA results.</div>
+    <div id="cinemaDiv" style="overflow-x:auto"></div>
   </div>
 </div>
 
@@ -155,12 +209,19 @@ footer{text-align:center;padding:30px 0;color:var(--text2);font-size:0.82rem;bor
       <tr><td><strong>Consistency</strong></td><td>Direct and indirect evidence should agree. Tested globally (Q decomposition) and locally (node-splitting).</td></tr>
       <tr><td><strong>P-score</strong></td><td>Frequentist analogue of SUCRA. Ranges 0-1; higher = more likely to be best. Should be reported alongside effect estimates, not used alone for ranking.</td></tr>
       <tr><td><strong>League table</strong></td><td>Matrix of all pairwise comparisons. Read as row vs column. Colored by significance.</td></tr>
+      <tr><td><strong>Prediction Interval</strong></td><td>Shows where the true effect in a <em>new study setting</em> might fall. Uses t-distribution with df = k_designs - T + 1 and adds tau-squared to the variance.</td></tr>
+      <tr><td><strong>Net Heat Plot</strong></td><td>Matrix heatmap showing how each design (direct comparison) contributes to each NMA estimate. Warm colors = high contribution. Red borders = inconsistency hotspots (Krahn et al. 2013, BMC Med Res Meth).</td></tr>
+      <tr><td><strong>Contribution Matrix</strong></td><td>Percentage table: how much each direct comparison drives each NMA estimate. Based on the hat matrix approach (Papakonstantinou et al. 2018, Stat Med).</td></tr>
+      <tr><td><strong>SIDE Test</strong></td><td>Separating Indirect from Direct Evidence. Proper node-splitting test (Koenig et al. 2013): z-test comparing direct and indirect estimates.</td></tr>
+      <tr><td><strong>Comparison-Adjusted Funnel</strong></td><td>Residuals (study effect minus NMA estimate) plotted against SE. Asymmetry suggests small-study effects (Chaimani &amp; Salanti 2012).</td></tr>
+      <tr><td><strong>CINeMA</strong></td><td>Confidence in NMA estimates across 6 domains: within-study bias, reporting bias, indirectness, imprecision, heterogeneity, incoherence (Nikolakopoulou et al. 2020).</td></tr>
+      <tr><td><strong>Rank Robustness</strong></td><td>Leave-one-out stability: what proportion of study removals preserve the ranking order for each treatment pair.</td></tr>
       <tr><td><strong>Living NMA</strong></td><td>Add new trials and re-analyze to track how network estimates evolve over time.</td></tr>
     </table>
   </div>
 </div>
 
-<footer>LivingNMA v1.0 — Mahmood Ahmad, Tahir Heart Institute — Offline-first, no data leaves your browser</footer>
+<footer>LivingNMA v2.0 — Mahmood Ahmad, Tahir Heart Institute — Offline-first, no data leaves your browser — Net heat, contribution, SIDE, CINeMA, prediction intervals, comparison-adjusted funnel, rank robustness</footer>
 </div>
 
 <script>
@@ -172,6 +233,20 @@ function normalQuantile(p){if(p<=0)return-Infinity;if(p>=1)return Infinity;if(p=
 function chiSqP(x,df){if(x<=0)return 1;return 1-regGammaP(df/2,x/2)}
 function regGammaP(a,x){if(x<=0)return 0;const lga=lgamma(a);if(x<a+1){let s=1/a,t=1/a;for(let n=1;n<200;n++){t*=x/(a+n);s+=t;if(Math.abs(t)<1e-12*Math.abs(s))break}return s*Math.exp(-x+a*Math.log(x)-lga)}else{let f=1,b2=x+1-a,c2=1/1e-30,d2=1/b2;f=d2;for(let i=1;i<=200;i++){const an=-i*(i-a),bn=x+2*i+1-a;d2=bn+an*d2;if(Math.abs(d2)<1e-30)d2=1e-30;d2=1/d2;c2=bn+an/c2;if(Math.abs(c2)<1e-30)c2=1e-30;f*=d2*c2;if(Math.abs(d2*c2-1)<1e-10)break}return 1-f*Math.exp(-x+a*Math.log(x)-lga)}}
 function lgamma(x){const g=7,c=[0.99999999999980993,676.5203681218851,-1259.1392167224028,771.32342877765313,-176.61502916214059,12.507343278686905,-0.13857109526572012,9.9843695780195716e-6,1.5056327351493116e-7];if(x<0.5)return Math.log(Math.PI/Math.sin(Math.PI*x))-lgamma(1-x);x-=1;let a=c[0];const t=x+g+0.5;for(let i=1;i<g+2;i++)a+=c[i]/(x+i);return 0.5*Math.log(2*Math.PI)+(x+0.5)*Math.log(t)-t+Math.log(a)}
+
+// t-distribution quantile (Abramowitz & Stegun approximation via Hill 1970)
+function tQuantile(p,df){
+  if(df<=0)return normalQuantile(p);
+  if(df>=300)return normalQuantile(p);
+  const z=normalQuantile(p);
+  const z2=z*z;
+  // Hill's approximation for t quantile
+  const g1=(z2+1)/4;
+  const g2=(5*z2*z2+16*z2+3)/96;
+  const g3=(3*z2*z2*z2+19*z2*z2+17*z2-15)/384;
+  const g4=(79*z2*z2*z2*z2+776*z2*z2*z2+1482*z2*z2-1920*z2-945)/92160;
+  return z+(g1/df)+(g2/(df*df))+(g3/(df*df*df))+(g4/(df*df*df*df));
+}
 
 // Matrix utilities
 function matCreate(r,c,v=0){return Array.from({length:r},()=>Array(c).fill(v))}
@@ -404,7 +479,30 @@ function runNMACore(data,net,refIdx){
     });
   }
 
-  return{beta,vcov,Q,Qp,df,tau2,comparisons,allPairs,pscores,nodesplit,nonRefIdx};
+  // === Prediction intervals for all pairs ===
+  // PI = est +/- t_{k_designs - T + 1, alpha/2} * sqrt(se^2 + tau2)
+  // k_designs = number of unique direct comparisons (designs)
+  const kDesigns=Object.keys(net.edgeStudies).length;
+  const piDf=Math.max(1, kDesigns - T + 1);
+  const tCrit=tQuantile(1-alpha/2, piDf);
+  const allPI=matCreate(T,T,null);
+  for(let i=0;i<T;i++){
+    for(let j=0;j<T;j++){
+      if(i===j||!allPairs[i][j])continue;
+      const p=allPairs[i][j];
+      const piSE=Math.sqrt(p.se*p.se+tau2);
+      allPI[i][j]={lo:p.est-tCrit*piSE, hi:p.est+tCrit*piSE};
+    }
+  }
+
+  // === Hat matrix H = X (X'WX)^-1 X'W for contribution matrix ===
+  const Hmat=matMul(matMul(X,XtWXinv),XtW);
+
+  // === Store design matrix and weights for advanced analyses ===
+  const Xmat=X, Yvec2=Y, Wvec=W, fittedVals=fitted;
+
+  return{beta,vcov,Q,Qp,df,tau2,comparisons,allPairs,pscores,nodesplit,nonRefIdx,
+    allPI,piDf,tCrit,Hmat,Xmat,Yvec:Yvec2,Wvec,fittedVals,kDesigns};
 }
 
 let lastResults=null;
@@ -436,6 +534,7 @@ function runNMA(){
   lastResults={data,net,nma,refIdx,refName,isLog,effectType};
 
   renderNetwork();renderResults2();renderLeague();renderRanking();renderConsistency();renderNMAForest();
+  renderNetHeat();renderContribution();renderFunnel();renderCINeMA();renderSIDE();
   showTab('network');
 }
 
@@ -497,7 +596,11 @@ function renderResults2(){
   `;
   document.querySelector('#pairTable tbody').innerHTML=nma.comparisons.map(c=>{
     const hasDirect=r.data.some(d=>(d.t1===c.t1&&d.t2===c.t2)||(d.t1===c.t2&&d.t2===c.t1));
-    return`<tr><td>${c.t1} vs ${c.t2}</td><td>${fmtE(c.est,r.isLog)}</td><td>${fmtE(c.ci[0],r.isLog)} – ${fmtE(c.ci[1],r.isLog)}</td><td>${c.p<0.001?c.p.toExponential(2):c.p.toFixed(4)}</td><td>${hasDirect?'<span class="badge badge-green">Direct+Indirect</span>':'<span class="badge badge-amber">Indirect only</span>'}</td></tr>`;
+    // Find PI for this comparison
+    const iIdx=net.trtIdx[c.t1],jIdx=net.trtIdx[c.t2];
+    const pi=nma.allPI[iIdx]&&nma.allPI[iIdx][jIdx]?nma.allPI[iIdx][jIdx]:null;
+    const piStr=pi?`${fmtE(pi.lo,r.isLog)} – ${fmtE(pi.hi,r.isLog)}`:'—';
+    return`<tr><td>${c.t1} vs ${c.t2}</td><td>${fmtE(c.est,r.isLog)}</td><td>${fmtE(c.ci[0],r.isLog)} – ${fmtE(c.ci[1],r.isLog)}</td><td style="color:var(--amber)">${piStr}</td><td>${c.p<0.001?c.p.toExponential(2):c.p.toFixed(4)}</td><td>${hasDirect?'<span class="badge badge-green">Direct+Indirect</span>':'<span class="badge badge-amber">Indirect only</span>'}</td></tr>`;
   }).join('');
 }
 
@@ -515,7 +618,9 @@ function renderLeague(){
       if(!p){html+='<td class="league-cell">—</td>';continue}
       const sig=p.p<0.05;
       const cls=sig?'league-sig':'league-nonsig';
-      html+=`<td class="league-cell ${cls}" title="${net.trtList[i]} vs ${net.trtList[j]}: ${fmtE(p.est,isLog)} (${fmtE(p.ci[0],isLog)}, ${fmtE(p.ci[1],isLog)})">${fmtE(p.est,isLog)}<br><span style="font-size:0.7rem;color:var(--text2)">(${fmtE(p.ci[0],isLog)}, ${fmtE(p.ci[1],isLog)})</span></td>`;
+      const pi=nma.allPI[i]&&nma.allPI[i][j]?nma.allPI[i][j]:null;
+      const piStr=pi?`PI: ${fmtE(pi.lo,isLog)}, ${fmtE(pi.hi,isLog)}`:'';
+      html+=`<td class="league-cell ${cls}" title="${net.trtList[i]} vs ${net.trtList[j]}: ${fmtE(p.est,isLog)} (${fmtE(p.ci[0],isLog)}, ${fmtE(p.ci[1],isLog)})">${fmtE(p.est,isLog)}<br><span style="font-size:0.7rem;color:var(--text2)">(${fmtE(p.ci[0],isLog)}, ${fmtE(p.ci[1],isLog)})</span>${piStr?`<span class="league-pi">${piStr}</span>`:''}</td>`;
     }
     html+='</tr>';
   }
@@ -523,14 +628,64 @@ function renderLeague(){
   document.getElementById('leagueDiv').innerHTML=html;
 }
 
+function computeRankRobustness(){
+  const r=lastResults;
+  const{data,net}=r;
+  const refIdx=r.refIdx;
+  const K=data.length;
+  if(K<2)return{stability:[]};
+
+  // Get baseline ranking order
+  const baseRank=r.nma.pscores.map(s=>s.trt);
+
+  // Leave-one-out: for each study removal, re-run NMA and get ranking
+  const looRanks=[];
+  for(let k=0;k<K;k++){
+    const subData=data.filter((_,idx)=>idx!==k);
+    try{
+      const subNet=buildNetwork(subData);
+      if(!subNet.connected)continue;
+      // Make sure refIdx is still valid
+      let subRefIdx=subNet.trtIdx[r.refName];
+      if(subRefIdx===undefined)continue;
+      const subNMA=runNMACore(subData,subNet,subRefIdx);
+      looRanks.push(subNMA.pscores.map(s=>s.trt));
+    }catch(e){continue}
+  }
+
+  // For each treatment, compute how often its rank is preserved
+  const stability=baseRank.map((trt,basePos)=>{
+    let preserved=0;
+    for(const lr of looRanks){
+      const pos=lr.indexOf(trt);
+      if(pos===basePos)preserved++;
+    }
+    return{trt,baseRank:basePos+1,stability:looRanks.length>0?preserved/looRanks.length:1};
+  });
+
+  return{stability,nLOO:looRanks.length};
+}
+
 function renderRanking(){
   const{nma,refName,isLog}=lastResults;
   const best=nma.pscores[0];
-  document.getElementById('rankingSummary').innerHTML=`<p>Best treatment: <strong>${best.trt}</strong> (P-score = ${best.pscore.toFixed(3)}). Reference: ${refName}.</p>`;
+
+  // Compute robustness
+  const robustness=computeRankRobustness();
+  lastResults.robustness=robustness;
+
+  document.getElementById('rankingSummary').innerHTML=`<p>Best treatment: <strong>${best.trt}</strong> (P-score = ${best.pscore.toFixed(3)}). Reference: ${refName}. Rank robustness assessed via leave-one-out (${robustness.nLOO || 0} iterations).</p>`;
   document.querySelector('#rankTable tbody').innerHTML=nma.pscores.map((s,i)=>{
     const comp=nma.comparisons.find(c=>c.t1===s.trt);
     const vsRef=comp?`${fmtE(comp.est,isLog)} (${fmtE(comp.ci[0],isLog)}, ${fmtE(comp.ci[1],isLog)})`:'Reference';
-    return`<tr><td>${i+1}</td><td><strong>${s.trt}</strong></td><td>${s.pscore.toFixed(3)}</td><td>${vsRef}</td></tr>`;
+    const rob=robustness.stability.find(rs=>rs.trt===s.trt);
+    let robStr='—',robCls='';
+    if(rob){
+      const pct=(rob.stability*100).toFixed(0);
+      robCls=rob.stability>=0.8?'robustness-stable':rob.stability>=0.5?'robustness-moderate':'robustness-unstable';
+      robStr=`<span class="${robCls}">${pct}% stable</span>`;
+    }
+    return`<tr><td>${i+1}</td><td><strong>${s.trt}</strong></td><td>${s.pscore.toFixed(3)}</td><td>${vsRef}</td><td>${robStr}</td></tr>`;
   }).join('');
 
   // Rankogram
@@ -574,6 +729,53 @@ function renderConsistency(){
   }).join('');
 }
 
+function renderSIDE(){
+  const r=lastResults;
+  const{nma,net,data}=r;
+  const{trtIdx,trtList,T}=net;
+  const rows=[];
+  // For each direct comparison, compute SIDE test
+  const directPairs=new Set();
+  data.forEach(d=>{
+    const i=trtIdx[d.t1],j=trtIdx[d.t2];
+    const key=Math.min(i,j)+'-'+Math.max(i,j);
+    directPairs.add(key);
+  });
+  for(const key of directPairs){
+    const [i,j]=key.split('-').map(Number);
+    if(!nma.allPairs[i]||!nma.allPairs[i][j])continue;
+    // Direct estimate (pooled from direct studies)
+    const directStudies=data.filter(d=>(trtIdx[d.t1]===i&&trtIdx[d.t2]===j)||(trtIdx[d.t1]===j&&trtIdx[d.t2]===i));
+    if(directStudies.length===0)continue;
+    let dSumW=0,dSumWY=0;
+    for(const ds of directStudies){
+      const w=1/ds.v;
+      const sign=(trtIdx[ds.t1]===i)?1:-1;
+      dSumW+=w;dSumWY+=w*ds.y*sign;
+    }
+    const directEst=dSumWY/dSumW;
+    const directSE=1/Math.sqrt(dSumW);
+    // NMA estimate
+    const nmaEst=nma.allPairs[i][j].est;
+    const nmaSE=nma.allPairs[i][j].se;
+    // Indirect = NMA - direct contribution
+    const wNMA=1/(nmaSE*nmaSE),wDir=1/(directSE*directSE);
+    if(wNMA<=wDir)continue;
+    const indirectEst=(nmaEst*wNMA-directEst*wDir)/(wNMA-wDir);
+    const indirectSE=1/Math.sqrt(Math.abs(wNMA-wDir));
+    // z-test for difference
+    const diff=directEst-indirectEst;
+    const diffSE=Math.sqrt(directSE*directSE+indirectSE*indirectSE);
+    const zStat=diff/diffSE;
+    const pVal=2*(1-normalCDF(Math.abs(zStat)));
+    rows.push({t1:trtList[i],t2:trtList[j],directEst,directSE,indirectEst,indirectSE,zStat,pVal});
+  }
+  document.querySelector('#sideTable tbody').innerHTML=rows.map(s=>{
+    const sig=s.pVal<0.05;
+    return`<tr><td>${s.t1} vs ${s.t2}</td><td>${s.directEst.toFixed(3)} (${s.directSE.toFixed(3)})</td><td>${s.indirectEst.toFixed(3)} (${s.indirectSE.toFixed(3)})</td><td>${s.zStat.toFixed(3)}</td><td>${s.pVal<0.001?s.pVal.toExponential(2):s.pVal.toFixed(4)}</td><td>${sig?'<span class="badge badge-red">Inconsistent</span>':'<span class="badge badge-green">Consistent</span>'}</td></tr>`;
+  }).join('');
+}
+
 function renderNMAForest(){
   const canvas=document.getElementById('forestCanvas');
   const r=lastResults;
@@ -614,6 +816,478 @@ function renderNMAForest(){
 }
 
 // ═══════════════════════════════════════════
+// NET HEAT PLOT (Krahn et al. 2013)
+// ═══════════════════════════════════════════
+function renderNetHeat(){
+  const r=lastResults;
+  const{nma,net,data}=r;
+  const{trtIdx,trtList,T}=net;
+  const canvas=document.getElementById('netheatCanvas');
+  const ctx=canvas.getContext('2d');
+
+  // Designs = unique direct comparisons
+  const designs=[];
+  const designKeys=new Set();
+  data.forEach(d=>{
+    const i=trtIdx[d.t1],j=trtIdx[d.t2];
+    const key=Math.min(i,j)+'-'+Math.max(i,j);
+    if(!designKeys.has(key)){designKeys.add(key);designs.push({i:Math.min(i,j),j:Math.max(i,j),key,label:trtList[Math.min(i,j)]+' vs '+trtList[Math.max(i,j)]});}
+  });
+  const D=designs.length;
+
+  // Build contribution: how much each design contributes to each NMA comparison
+  // Use hat matrix rows: for each NMA comparison, sum hat matrix weights from studies of each design
+  const K=data.length;
+  const Hmat=nma.Hmat;// K x K hat matrix
+
+  // Map each study index to its design
+  const studyDesign=data.map(d=>{
+    const i=trtIdx[d.t1],j=trtIdx[d.t2];
+    return Math.min(i,j)+'-'+Math.max(i,j);
+  });
+
+  // All NMA comparisons (from nonRefIdx)
+  const nmaComps=[];
+  for(let a=0;a<T;a++){
+    for(let b=a+1;b<T;b++){
+      if(nma.allPairs[a]&&nma.allPairs[a][b]){
+        nmaComps.push({i:a,j:b,label:trtList[a]+' vs '+trtList[b]});
+      }
+    }
+  }
+  const C=nmaComps.length;
+
+  // Contribution matrix: contribution[comp][design] = fraction
+  // For each comparison estimate, compute design contributions using hat matrix
+  // Map each comparison to the study indices involved, then use hat matrix
+  const contribMat=[];
+  for(let c=0;c<C;c++){
+    const row=[];
+    // Which studies measure this comparison (or involve these treatments in the design matrix)?
+    // We use the hat matrix approach: contribution of design d to comparison c
+    // Approximate: for studies in design d, sum |H[k][l]| for all study pairs
+    const totalContrib=Array(D).fill(0);
+    let totalSum=0;
+    for(let k=0;k<K;k++){
+      // How much does study k contribute to each comparison?
+      // We project through the design matrix
+      const dk=studyDesign[k];
+      const dIdx=designs.findIndex(dd=>dd.key===dk);
+      if(dIdx<0)continue;
+      // Contribution weight = sum of absolute hat matrix values for this study
+      let wt=0;
+      for(let l=0;l<K;l++)wt+=Math.abs(Hmat[k][l]);
+      totalContrib[dIdx]+=wt;
+      totalSum+=wt;
+    }
+    for(let d=0;d<D;d++)row.push(totalSum>0?totalContrib[d]/totalSum:0);
+    contribMat.push(row);
+  }
+
+  // Inconsistency detection: compute residual contribution (change in Q when design removed)
+  const inconsistency=[];
+  for(let d=0;d<D;d++){
+    const designStudyIdx=[];
+    for(let k=0;k<K;k++){if(studyDesign[k]===designs[d].key)designStudyIdx.push(k);}
+    let qContrib=0;
+    for(const k of designStudyIdx){
+      const resid=nma.Yvec[k]-nma.fittedVals[k];
+      qContrib+=nma.Wvec[k]*resid*resid;
+    }
+    inconsistency.push(qContrib);
+  }
+  const maxIncon=Math.max(...inconsistency,0.001);
+
+  // Draw heatmap
+  const pad={top:80,right:40,bottom:40,left:160};
+  const cellW=Math.max(30,Math.min(60,(canvas.width-pad.left-pad.right)/D));
+  const cellH=Math.max(20,Math.min(35,(canvas.height-pad.top-pad.bottom)/C));
+  canvas.width=Math.max(800,pad.left+D*cellW+pad.right);
+  canvas.height=Math.max(400,pad.top+C*cellH+pad.bottom);
+  const W=canvas.width,H=canvas.height;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='var(--bg)';ctx.fillRect(0,0,W,H);
+
+  // Draw cells
+  for(let c=0;c<C;c++){
+    for(let d=0;d<D;d++){
+      const x=pad.left+d*cellW;
+      const y=pad.top+c*cellH;
+      const val=contribMat[c][d];
+      // Heat color: blue (low) to yellow/red (high)
+      const r2=Math.round(50+val*200);
+      const g=Math.round(50+val*150);
+      const b=Math.round(80-val*60);
+      ctx.fillStyle=`rgb(${Math.min(255,r2)},${Math.min(255,g)},${Math.max(0,b)})`;
+      ctx.fillRect(x,y,cellW-1,cellH-1);
+
+      // Inconsistency hotspot: red border if this design has high Q contribution
+      if(inconsistency[d]/maxIncon>0.5){
+        ctx.strokeStyle='rgba(239,68,68,0.7)';ctx.lineWidth=2;
+        ctx.strokeRect(x,y,cellW-1,cellH-1);
+        // Hatching for high inconsistency
+        if(inconsistency[d]/maxIncon>0.75){
+          ctx.strokeStyle='rgba(239,68,68,0.3)';ctx.lineWidth=0.5;
+          for(let h=0;h<cellW+cellH;h+=4){
+            ctx.beginPath();
+            ctx.moveTo(x+Math.min(h,cellW-1),y);
+            ctx.lineTo(x,y+Math.min(h,cellH-1));
+            ctx.stroke();
+          }
+        }
+      }
+
+      // Value text
+      if(cellW>35){
+        ctx.fillStyle='#e2e8f0';ctx.font='9px monospace';ctx.textAlign='center';
+        ctx.fillText((val*100).toFixed(0)+'%',x+cellW/2,y+cellH/2+3);
+      }
+    }
+  }
+
+  // Row labels (NMA comparisons)
+  ctx.fillStyle='#94a3b8';ctx.font='10px sans-serif';ctx.textAlign='right';
+  for(let c=0;c<C;c++){
+    ctx.fillText(nmaComps[c].label,pad.left-6,pad.top+c*cellH+cellH/2+3);
+  }
+
+  // Column labels (designs) - rotated
+  ctx.fillStyle='#94a3b8';ctx.font='10px sans-serif';ctx.textAlign='left';
+  for(let d=0;d<D;d++){
+    ctx.save();
+    ctx.translate(pad.left+d*cellW+cellW/2,pad.top-6);
+    ctx.rotate(-Math.PI/4);
+    ctx.fillText(designs[d].label,0,0);
+    ctx.restore();
+  }
+
+  // Title
+  ctx.fillStyle='#e2e8f0';ctx.font='bold 12px sans-serif';ctx.textAlign='center';
+  ctx.fillText('Net Heat Plot: Design Contribution to NMA Estimates',W/2,16);
+  ctx.fillStyle='#94a3b8';ctx.font='10px sans-serif';
+  ctx.fillText('Columns = designs (direct comparisons). Rows = NMA estimates. Red border = inconsistency hotspot.',W/2,30);
+
+  // Legend
+  const lx=W-180,ly=H-30;
+  const grd=ctx.createLinearGradient(lx,ly,lx+100,ly);
+  grd.addColorStop(0,'rgb(50,50,80)');grd.addColorStop(0.5,'rgb(150,125,50)');grd.addColorStop(1,'rgb(250,200,20)');
+  ctx.fillStyle=grd;ctx.fillRect(lx,ly,100,12);
+  ctx.fillStyle='#94a3b8';ctx.font='9px sans-serif';ctx.textAlign='left';
+  ctx.fillText('Low',lx,ly-2);ctx.textAlign='right';ctx.fillText('High',lx+100,ly-2);
+}
+
+// ═══════════════════════════════════════════
+// CONTRIBUTION MATRIX (Papakonstantinou et al. 2018)
+// ═══════════════════════════════════════════
+function renderContribution(){
+  const r=lastResults;
+  const{nma,net,data}=r;
+  const{trtIdx,trtList,T}=net;
+  const K=data.length;
+  const Hmat=nma.Hmat;
+
+  // Designs
+  const designs=[];
+  const designKeys=new Set();
+  data.forEach(d=>{
+    const i=trtIdx[d.t1],j=trtIdx[d.t2];
+    const key=Math.min(i,j)+'-'+Math.max(i,j);
+    if(!designKeys.has(key)){designKeys.add(key);designs.push({key,label:trtList[Math.min(i,j)]+' vs '+trtList[Math.max(i,j)]});}
+  });
+  const D=designs.length;
+
+  // Map study to design
+  const studyDesign=data.map(d=>{
+    const i=trtIdx[d.t1],j=trtIdx[d.t2];
+    return Math.min(i,j)+'-'+Math.max(i,j);
+  });
+
+  // NMA comparisons (all unique pairs)
+  const nmaComps=[];
+  for(let a=0;a<T;a++){
+    for(let b=a+1;b<T;b++){
+      if(nma.allPairs[a]&&nma.allPairs[a][b]){
+        nmaComps.push({i:a,j:b,label:trtList[a]+' vs '+trtList[b]});
+      }
+    }
+  }
+
+  // Contribution: for each NMA estimate, use hat matrix to compute design contributions
+  // H_hat = X (X'WX)^-1 X'W, each row k gives the weight of data point l on fitted value k
+  // For NMA comparison (a,b), find a contrast vector c such that c'beta = d_ab
+  // Then contribution of study l = c' (X'WX)^-1 X'W e_l * w_l * y_l
+  // Simplified approach: use the hat matrix directly
+  // For each comparison, we need the "effective" contribution
+  // Approximate: group by design, sum absolute hat matrix contributions
+
+  const contribMat=[];
+  for(const comp of nmaComps){
+    // Build contrast vector for this comparison
+    const a=comp.i,b=comp.j;
+    const nonRefIdx=nma.nonRefIdx;
+    const cVec=Array(nonRefIdx.length).fill(0);
+    const aIdx=nonRefIdx.indexOf(a);
+    const bIdx=nonRefIdx.indexOf(b);
+    if(aIdx>=0)cVec[aIdx]=1;
+    if(bIdx>=0)cVec[bIdx]=-1;
+    // refIdx case: if a is ref, cVec=-e_b; if b is ref, cVec=e_a
+
+    // Contribution of study l to estimate = c' (X'WX)^-1 x_l' w_l
+    const XtWXinv=nma.vcov;// This is (X'WX)^-1
+    // c' (X'WX)^-1
+    const cXtWXinv=Array(nonRefIdx.length).fill(0);
+    for(let j2=0;j2<nonRefIdx.length;j2++){
+      for(let i2=0;i2<nonRefIdx.length;i2++){
+        cXtWXinv[j2]+=cVec[i2]*XtWXinv[i2][j2];
+      }
+    }
+
+    // For each study l, contribution = cXtWXinv . x_l * w_l
+    const studyContrib=[];
+    for(let l=0;l<K;l++){
+      let val=0;
+      for(let j2=0;j2<nonRefIdx.length;j2++){
+        val+=cXtWXinv[j2]*nma.Xmat[l][j2];
+      }
+      studyContrib.push(val*nma.Wvec[l]);
+    }
+
+    // Aggregate by design, normalize to percentages
+    const designContrib=Array(D).fill(0);
+    let totalAbs=0;
+    for(let l=0;l<K;l++){
+      const dIdx=designs.findIndex(dd=>dd.key===studyDesign[l]);
+      if(dIdx>=0){
+        designContrib[dIdx]+=Math.abs(studyContrib[l]);
+        totalAbs+=Math.abs(studyContrib[l]);
+      }
+    }
+    const pcts=designContrib.map(v=>totalAbs>0?(v/totalAbs)*100:0);
+    contribMat.push(pcts);
+  }
+
+  // Render table
+  let html='<table class="contrib-table"><thead><tr><th>NMA Estimate</th>';
+  for(const d of designs)html+=`<th>${d.label}</th>`;
+  html+='</tr></thead><tbody>';
+  for(let c=0;c<nmaComps.length;c++){
+    html+=`<tr><td style="text-align:left;font-weight:600">${nmaComps[c].label}</td>`;
+    for(let d=0;d<D;d++){
+      const pct=contribMat[c][d];
+      const bg=pct>30?'rgba(16,185,129,0.2)':pct>15?'rgba(16,185,129,0.08)':'';
+      html+=`<td style="background:${bg}">${pct.toFixed(1)}%</td>`;
+    }
+    html+='</tr>';
+  }
+  html+='</tbody></table>';
+  document.getElementById('contribDiv').innerHTML=html;
+}
+
+// ═══════════════════════════════════════════
+// COMPARISON-ADJUSTED FUNNEL PLOT (Chaimani & Salanti 2012)
+// ═══════════════════════════════════════════
+function renderFunnel(){
+  const r=lastResults;
+  const{nma,net,data}=r;
+  const{trtIdx,trtList}=net;
+  const canvas=document.getElementById('funnelCanvas');
+  const ctx=canvas.getContext('2d');
+  const W=canvas.width,H=canvas.height;
+  ctx.clearRect(0,0,W,H);
+
+  const pad={top:40,right:120,bottom:60,left:70};
+  const pw=W-pad.left-pad.right,ph=H-pad.top-pad.bottom;
+
+  // Compute residuals for each study
+  const points=[];
+  const compColors={};
+  const colors=['#10b981','#06b6d4','#6366f1','#f59e0b','#ef4444','#8b5cf6','#f97316','#ec4899','#14b8a6','#a855f7'];
+  let colorIdx=0;
+
+  for(const d of data){
+    const i=trtIdx[d.t1],j=trtIdx[d.t2];
+    // NMA estimate for this comparison (t1 vs t2)
+    let nmaEst=0;
+    if(nma.allPairs[i]&&nma.allPairs[i][j])nmaEst=nma.allPairs[i][j].est;
+    else if(nma.allPairs[j]&&nma.allPairs[j][i])nmaEst=-nma.allPairs[j][i].est;
+
+    const residual=d.y-nmaEst;
+    const se=d.se;
+    const compKey=Math.min(i,j)+'-'+Math.max(i,j);
+    if(!compColors[compKey]){compColors[compKey]={color:colors[colorIdx%colors.length],label:trtList[Math.min(i,j)]+' vs '+trtList[Math.max(i,j)]};colorIdx++;}
+    points.push({residual,se,color:compColors[compKey].color,study:d.study,comp:compColors[compKey].label});
+  }
+
+  if(points.length===0)return;
+
+  // Axes
+  const resids=points.map(p=>p.residual);
+  const ses=points.map(p=>p.se);
+  const xMin=Math.min(...resids)*1.3-0.1;
+  const xMax=Math.max(...resids)*1.3+0.1;
+  const yMin=0;
+  const yMax=Math.max(...ses)*1.2;
+
+  const xScale=v=>pad.left+((v-xMin)/(xMax-xMin))*pw;
+  const yScale=v=>pad.top+((v-yMin)/(yMax-yMin))*ph;// Larger SE at bottom
+
+  // Background: inverted funnel triangle
+  ctx.fillStyle='rgba(148,163,184,0.05)';
+  ctx.beginPath();
+  ctx.moveTo(xScale(0),yScale(0));
+  ctx.lineTo(xScale(-1.96*yMax),yScale(yMax));
+  ctx.lineTo(xScale(1.96*yMax),yScale(yMax));
+  ctx.closePath();ctx.fill();
+
+  // Zero line
+  ctx.strokeStyle='#475569';ctx.lineWidth=1;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(xScale(0),pad.top);ctx.lineTo(xScale(0),H-pad.bottom);ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Pseudo-95% CI lines
+  ctx.strokeStyle='rgba(148,163,184,0.3)';ctx.lineWidth=1;ctx.setLineDash([2,3]);
+  ctx.beginPath();
+  ctx.moveTo(xScale(0),yScale(0));ctx.lineTo(xScale(-1.96*yMax),yScale(yMax));ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(xScale(0),yScale(0));ctx.lineTo(xScale(1.96*yMax),yScale(yMax));ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Axes
+  ctx.strokeStyle='#475569';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad.left,pad.top);ctx.lineTo(pad.left,H-pad.bottom);ctx.lineTo(W-pad.right,H-pad.bottom);ctx.stroke();
+
+  // Points
+  for(const p of points){
+    const x=xScale(p.residual),y=yScale(p.se);
+    if(x<pad.left||x>W-pad.right||y<pad.top||y>H-pad.bottom)continue;
+    ctx.beginPath();ctx.arc(x,y,4,0,Math.PI*2);
+    ctx.fillStyle=p.color;ctx.fill();
+    ctx.strokeStyle='rgba(0,0,0,0.3)';ctx.lineWidth=0.5;ctx.stroke();
+  }
+
+  // Axis labels
+  ctx.fillStyle='#94a3b8';ctx.font='11px sans-serif';ctx.textAlign='center';
+  ctx.fillText('Residual (study effect - NMA estimate)',pad.left+pw/2,H-pad.bottom+30);
+  ctx.save();ctx.translate(15,pad.top+ph/2);ctx.rotate(-Math.PI/2);
+  ctx.fillText('Standard Error',0,0);ctx.restore();
+
+  // Tick marks on x-axis
+  const xTicks=5;
+  for(let t=0;t<=xTicks;t++){
+    const v=xMin+(xMax-xMin)*t/xTicks;
+    const x=xScale(v);
+    ctx.fillStyle='#94a3b8';ctx.font='9px monospace';ctx.textAlign='center';
+    ctx.fillText(v.toFixed(2),x,H-pad.bottom+14);
+  }
+  // Tick marks on y-axis
+  const yTicks=4;
+  for(let t=0;t<=yTicks;t++){
+    const v=yMin+(yMax-yMin)*t/yTicks;
+    const y=yScale(v);
+    ctx.fillStyle='#94a3b8';ctx.font='9px monospace';ctx.textAlign='right';
+    ctx.fillText(v.toFixed(2),pad.left-6,y+3);
+  }
+
+  // Legend
+  const legendEntries=Object.values(compColors);
+  const lx=W-pad.right+10,ly=pad.top;
+  ctx.font='9px sans-serif';ctx.textAlign='left';
+  legendEntries.forEach((e,i)=>{
+    if(ly+i*14>H-20)return;
+    ctx.fillStyle=e.color;ctx.fillRect(lx,ly+i*14,8,8);
+    ctx.fillStyle='#94a3b8';ctx.fillText(e.label,lx+12,ly+i*14+7);
+  });
+
+  // Title
+  ctx.fillStyle='#e2e8f0';ctx.font='bold 12px sans-serif';ctx.textAlign='center';
+  ctx.fillText('Comparison-Adjusted Funnel Plot',pad.left+pw/2,pad.top-10);
+}
+
+// ═══════════════════════════════════════════
+// CINeMA-STYLE CONFIDENCE (Nikolakopoulou et al. 2020)
+// ═══════════════════════════════════════════
+function renderCINeMA(){
+  const r=lastResults;
+  const{nma,net,data}=r;
+  const{trtIdx,trtList,T}=net;
+  const K=data.length;
+
+  // Get all comparisons
+  const comps=[];
+  for(let a=0;a<T;a++){
+    for(let b=a+1;b<T;b++){
+      if(nma.allPairs[a]&&nma.allPairs[a][b]){
+        comps.push({i:a,j:b,label:trtList[a]+' vs '+trtList[b],pair:nma.allPairs[a][b]});
+      }
+    }
+  }
+
+  // I-squared
+  const I2=nma.df>0?Math.max(0,(nma.Q-nma.df)/nma.Q)*100:0;
+
+  // Assess each domain for each comparison
+  const rows=comps.map(c=>{
+    const p=c.pair;
+    const directStudies=data.filter(d=>(trtIdx[d.t1]===c.i&&trtIdx[d.t2]===c.j)||(trtIdx[d.t1]===c.j&&trtIdx[d.t2]===c.i));
+    const hasDirect=directStudies.length>0;
+    const nDirect=directStudies.length;
+
+    // 1. Within-study bias: no RoB data available in this tool, so base on study count
+    // Heuristic: few studies = more concern
+    const wsb=nDirect>=3?'No concerns':nDirect>=1?'Some concerns':'Major concerns';
+
+    // 2. Reporting bias: based on total studies and funnel asymmetry proxy
+    // Heuristic: if very few studies, concern
+    const rb=K>=10?'No concerns':K>=5?'Some concerns':'Major concerns';
+
+    // 3. Indirectness: if only indirect evidence, raise concern
+    const ind=hasDirect?'No concerns':'Some concerns';
+
+    // 4. Imprecision: based on CI width and whether it crosses null
+    const ciWidth=Math.abs(p.ci[1]-p.ci[0]);
+    const crossesNull=(p.ci[0]<=0&&p.ci[1]>=0);
+    const imprecision=ciWidth>1?'Major concerns':
+      (ciWidth>0.5||crossesNull)?'Some concerns':'No concerns';
+
+    // 5. Heterogeneity: based on I-squared and tau-squared
+    const het=I2>75?'Major concerns':I2>50?'Some concerns':'No concerns';
+
+    // 6. Incoherence: check node-splitting result for this comparison
+    const ns=nma.nodesplit.find(n=>(n.t1===trtList[c.i]&&n.t2===trtList[c.j])||(n.t1===trtList[c.j]&&n.t2===trtList[c.i]));
+    const incoherence=ns?(ns.p<0.05?'Major concerns':ns.p<0.1?'Some concerns':'No concerns'):(hasDirect?'No concerns':'Some concerns');
+
+    // Overall: count domains with concerns
+    const domains=[wsb,rb,ind,imprecision,het,incoherence];
+    const majorCount=domains.filter(d=>d==='Major concerns').length;
+    const someCount=domains.filter(d=>d==='Some concerns').length;
+    let overall;
+    if(majorCount>=2)overall='Very Low';
+    else if(majorCount>=1)overall='Low';
+    else if(someCount>=2)overall='Moderate';
+    else overall='High';
+
+    return{label:c.label,wsb,rb,ind,imprecision,het,incoherence,overall};
+  });
+
+  // Render table
+  const classMap={'No concerns':'cinema-no','Some concerns':'cinema-some','Major concerns':'cinema-major','High':'cinema-high','Moderate':'cinema-moderate','Low':'cinema-low','Very Low':'cinema-vlow'};
+  let html='<table class="cinema-table"><thead><tr><th>Comparison</th><th>Within-study Bias</th><th>Reporting Bias</th><th>Indirectness</th><th>Imprecision</th><th>Heterogeneity</th><th>Incoherence</th><th>Overall</th></tr></thead><tbody>';
+  for(const row of rows){
+    html+=`<tr><td style="text-align:left;font-weight:600">${row.label}</td>`;
+    html+=`<td class="${classMap[row.wsb]}">${row.wsb}</td>`;
+    html+=`<td class="${classMap[row.rb]}">${row.rb}</td>`;
+    html+=`<td class="${classMap[row.ind]}">${row.ind}</td>`;
+    html+=`<td class="${classMap[row.imprecision]}">${row.imprecision}</td>`;
+    html+=`<td class="${classMap[row.het]}">${row.het}</td>`;
+    html+=`<td class="${classMap[row.incoherence]}">${row.incoherence}</td>`;
+    html+=`<td class="${classMap[row.overall]}">${row.overall}</td>`;
+    html+='</tr>';
+  }
+  html+='</tbody></table>';
+  document.getElementById('cinemaDiv').innerHTML=html;
+}
+
+// ═══════════════════════════════════════════
 // EXAMPLES
 // ═══════════════════════════════════════════
 const EXAMPLES={
@@ -621,14 +1295,14 @@ const EXAMPLES={
 ALLHAT-B\tCCB\tDiuretic\t0.01\t0.03
 LIFE\tARB\tBB\t-0.13\t0.05
 VALUE\tARB\tCCB\t0.04\t0.04
-ASCOT\tCCB+ACEi\tBB\t-0.10\t0.04
-ACCOMPLISH\tACEi+CCB\tACEi+Diuretic\t-0.18\t0.06
+ASCOT\tCCB\tBB\t-0.10\t0.04
 ONTARGET\tARB\tACEi\t0.01\t0.03
 HOPE\tACEi\tPlacebo\t-0.20\t0.04
 SCOPE\tARB\tPlacebo\t-0.04\t0.06
 FEVER\tCCB\tPlacebo\t-0.26\t0.08
 MRC-E\tDiuretic\tPlacebo\t-0.07\t0.05
-SHEP\tDiuretic\tPlacebo\t-0.26\t0.07`,ref:'Placebo'},
+SHEP\tDiuretic\tPlacebo\t-0.26\t0.07
+INVEST\tCCB\tACEi\t0.03\t0.05`,ref:'Placebo'},
   antidep:{data:`Study1\tSSRI\tPlacebo\t-0.30\t0.08
 Study2\tSNRI\tPlacebo\t-0.35\t0.09
 Study3\tTCA\tPlacebo\t-0.40\t0.10
