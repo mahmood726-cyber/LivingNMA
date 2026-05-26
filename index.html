@@ -105,12 +105,12 @@ footer{text-align:center;padding:30px 0;color:var(--text2);font-size:0.82rem;bor
     <h3>Contrast-Level Data</h3>
     <div class="info-box">One contrast per line: Study, Treatment1, Treatment2, Effect (T1 vs T2), SE. Effect on log scale for OR/RR/HR or raw for SMD. Treatment names are case-sensitive.</div>
     <div class="grid-2">
-      <div><label>Effect measure</label><select id="effectType"><option value="logOR">Log OR</option><option value="logRR">Log RR</option><option value="SMD">SMD</option><option value="MD">Mean Difference</option></select></div>
-      <div><label>Reference treatment</label><input type="text" id="refTrt" value="" placeholder="Leave blank for auto (most connected)"></div>
+      <div><label>Effect measure</label><select id="effectType" aria-label="Effect measure"><option value="logOR">Log OR</option><option value="logRR">Log RR</option><option value="SMD">SMD</option><option value="MD">Mean Difference</option></select></div>
+      <div><label>Reference treatment</label><input type="text" id="refTrt" value="" placeholder="Leave blank for auto (most connected)" aria-label="Reference treatment"></div>
     </div>
     <div style="margin-top:12px">
       <label>Contrast data (study, trt1, trt2, effect_1vs2, SE)</label>
-      <textarea id="dataInput" rows="14" placeholder="ALLHAT  ACEi  Diuretic  0.05  0.04&#10;HOPE  ACEi  Placebo  -0.18  0.05"></textarea>
+      <textarea id="dataInput" rows="14" placeholder="ALLHAT  ACEi  Diuretic  0.05  0.04&#10;HOPE  ACEi  Placebo  -0.18  0.05" aria-label="Contrast data (study, trt1, trt2, effect_1vs2, SE)"></textarea>
     </div>
     <div class="btn-group">
       <button class="btn btn-primary" onclick="runNMA()">Run NMA</button>
