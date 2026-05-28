@@ -320,6 +320,11 @@ footer{text-align:center;padding:30px 0;color:var(--text2);font-size:0.82rem;bor
 </div>
 
 <script>
+// Escape user-supplied text (treatment names, reference labels) before
+// interpolating into innerHTML. Numbers/computed stats don't need it.
+function escapeHtml(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
 // ═══════════════════════════════════════════
 // STATS
 // ═══════════════════════════════════════════
@@ -690,7 +695,7 @@ function renderResults2(){
     <div class="stat-box"><div class="value">${nEdges}</div><div class="label">Direct Comparisons</div></div>
     <div class="stat-box"><div class="value">${nma.Q.toFixed(2)}</div><div class="label">Q (df=${nma.df}), P=${nma.Qp.toFixed(3)}</div></div>
     <div class="stat-box"><div class="value">${nma.tau2.toFixed(4)}</div><div class="label">τ² (heterogeneity)</div></div>
-    <div class="stat-box"><div class="value">${r.refName}</div><div class="label">Reference</div></div>
+    <div class="stat-box"><div class="value">${escapeHtml(r.refName)}</div><div class="label">Reference</div></div>
   `;
   document.querySelector('#pairTable tbody').innerHTML=nma.comparisons.map(c=>{
     const hasDirect=r.data.some(d=>(d.t1===c.t1&&d.t2===c.t2)||(d.t1===c.t2&&d.t2===c.t1));
@@ -698,7 +703,7 @@ function renderResults2(){
     const iIdx=net.trtIdx[c.t1],jIdx=net.trtIdx[c.t2];
     const pi=nma.allPI[iIdx]&&nma.allPI[iIdx][jIdx]?nma.allPI[iIdx][jIdx]:null;
     const piStr=pi?`${fmtE(pi.lo,r.isLog)} – ${fmtE(pi.hi,r.isLog)}`:'—';
-    return`<tr><td>${c.t1} vs ${c.t2}</td><td>${fmtE(c.est,r.isLog)}</td><td>${fmtE(c.ci[0],r.isLog)} – ${fmtE(c.ci[1],r.isLog)}</td><td style="color:var(--amber)">${piStr}</td><td>${c.p<0.001?c.p.toExponential(2):c.p.toFixed(4)}</td><td>${hasDirect?'<span class="badge badge-green">Direct+Indirect</span>':'<span class="badge badge-amber">Indirect only</span>'}</td></tr>`;
+    return`<tr><td>${escapeHtml(c.t1)} vs ${escapeHtml(c.t2)}</td><td>${fmtE(c.est,r.isLog)}</td><td>${fmtE(c.ci[0],r.isLog)} – ${fmtE(c.ci[1],r.isLog)}</td><td style="color:var(--amber)">${piStr}</td><td>${c.p<0.001?c.p.toExponential(2):c.p.toFixed(4)}</td><td>${hasDirect?'<span class="badge badge-green">Direct+Indirect</span>':'<span class="badge badge-amber">Indirect only</span>'}</td></tr>`;
   }).join('');
 }
 
@@ -889,7 +894,7 @@ function renderRanking(){
   const rankData=computeRankogram(nma, net, 1000);
   lastResults.rankData=rankData;
 
-  document.getElementById('rankingSummary').innerHTML=`<p>Best treatment: <strong>${best.trt}</strong> (P-score = ${best.pscore.toFixed(3)}, SUCRA = ${rankData.sucra[nma.pscores[0].idx].toFixed(3)}). Reference: ${refName}. Rankogram from 1000 MVN simulations. Rank robustness via leave-one-out (${robustness.nLOO || 0} iterations).</p>`;
+  document.getElementById('rankingSummary').innerHTML=`<p>Best treatment: <strong>${escapeHtml(best.trt)}</strong> (P-score = ${best.pscore.toFixed(3)}, SUCRA = ${rankData.sucra[nma.pscores[0].idx].toFixed(3)}). Reference: ${escapeHtml(refName)}. Rankogram from 1000 MVN simulations. Rank robustness via leave-one-out (${robustness.nLOO || 0} iterations).</p>`;
 
   // Build ranking table sorted by P-score (matching pscores order)
   document.querySelector('#rankTable tbody').innerHTML=nma.pscores.map((s,i)=>{
@@ -906,7 +911,7 @@ function renderRanking(){
     const sucrVal=rankData.sucra[tIdx].toFixed(3);
     const mr=rankData.meanRank[tIdx].toFixed(1);
     const cri=rankData.rankCrI[tIdx];
-    return`<tr><td>${i+1}</td><td><strong>${s.trt}</strong></td><td>${s.pscore.toFixed(3)}</td><td>${sucrVal}</td><td>${mr} (${cri.lo}–${cri.hi})</td><td>${vsRef}</td><td>${robStr}</td></tr>`;
+    return`<tr><td>${i+1}</td><td><strong>${escapeHtml(s.trt)}</strong></td><td>${s.pscore.toFixed(3)}</td><td>${sucrVal}</td><td>${mr} (${cri.lo}–${cri.hi})</td><td>${vsRef}</td><td>${robStr}</td></tr>`;
   }).join('');
 
   // Rankogram heatmap
@@ -997,7 +1002,7 @@ function renderConsistency(){
   `;
   document.querySelector('#nodesplitTable tbody').innerHTML=nma.nodesplit.map(n=>{
     const sig=n.p<0.05;
-    return`<tr><td>${n.t1} vs ${n.t2}</td><td>${n.direct.est.toFixed(3)} (SE ${n.direct.se.toFixed(3)})</td><td>${n.indirect.est.toFixed(3)} (SE ${n.indirect.se.toFixed(3)})</td><td>${n.diff.toFixed(3)} (SE ${n.diffSE.toFixed(3)})</td><td>${n.p.toFixed(4)}</td><td>${sig?'<span class="badge badge-red">Inconsistent</span>':'<span class="badge badge-green">Consistent</span>'}</td></tr>`;
+    return`<tr><td>${escapeHtml(n.t1)} vs ${escapeHtml(n.t2)}</td><td>${n.direct.est.toFixed(3)} (SE ${n.direct.se.toFixed(3)})</td><td>${n.indirect.est.toFixed(3)} (SE ${n.indirect.se.toFixed(3)})</td><td>${n.diff.toFixed(3)} (SE ${n.diffSE.toFixed(3)})</td><td>${n.p.toFixed(4)}</td><td>${sig?'<span class="badge badge-red">Inconsistent</span>':'<span class="badge badge-green">Consistent</span>'}</td></tr>`;
   }).join('');
 }
 
@@ -1044,7 +1049,7 @@ function renderSIDE(){
   }
   document.querySelector('#sideTable tbody').innerHTML=rows.map(s=>{
     const sig=s.pVal<0.05;
-    return`<tr><td>${s.t1} vs ${s.t2}</td><td>${s.directEst.toFixed(3)} (${s.directSE.toFixed(3)})</td><td>${s.indirectEst.toFixed(3)} (${s.indirectSE.toFixed(3)})</td><td>${s.zStat.toFixed(3)}</td><td>${s.pVal<0.001?s.pVal.toExponential(2):s.pVal.toFixed(4)}</td><td>${sig?'<span class="badge badge-red">Inconsistent</span>':'<span class="badge badge-green">Consistent</span>'}</td></tr>`;
+    return`<tr><td>${escapeHtml(s.t1)} vs ${escapeHtml(s.t2)}</td><td>${s.directEst.toFixed(3)} (${s.directSE.toFixed(3)})</td><td>${s.indirectEst.toFixed(3)} (${s.indirectSE.toFixed(3)})</td><td>${s.zStat.toFixed(3)}</td><td>${s.pVal<0.001?s.pVal.toExponential(2):s.pVal.toFixed(4)}</td><td>${sig?'<span class="badge badge-red">Inconsistent</span>':'<span class="badge badge-green">Consistent</span>'}</td></tr>`;
   }).join('');
 }
 
@@ -2669,7 +2674,7 @@ function renderBayesianNMA(){
     const overlapHi=Math.min(pb.hi,freqCI[1]);
     const overlap=overlapHi>overlapLo;
     const agree=overlap?'<span class="badge badge-green">Agree</span>':'<span class="badge badge-red">Disagree</span>';
-    return`<tr><td>${pb.trt} vs ${refName}</td><td>${fmtE(pb.median,isLog)}</td><td>${fmtE(pb.lo,isLog)} - ${fmtE(pb.hi,isLog)}</td><td>${fmtE(freqEst,isLog)}</td><td>${fmtE(freqCI[0],isLog)} - ${fmtE(freqCI[1],isLog)}</td><td>${agree}</td></tr>`;
+    return`<tr><td>${escapeHtml(pb.trt)} vs ${escapeHtml(refName)}</td><td>${fmtE(pb.median,isLog)}</td><td>${fmtE(pb.lo,isLog)} - ${fmtE(pb.hi,isLog)}</td><td>${fmtE(freqEst,isLog)}</td><td>${fmtE(freqCI[0],isLog)} - ${fmtE(freqCI[1],isLog)}</td><td>${agree}</td></tr>`;
   }).join('');
 
   // Bayesian vs Frequentist forest plot
