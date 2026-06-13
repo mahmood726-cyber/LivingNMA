@@ -462,14 +462,14 @@ function runNMACore(data,net,refIdx){
   // DL heterogeneity
   let tau2=0;
   if(df>0&&Q>df){
-    let sumW=0,trWXtWXinvW=0;
+    let sumW=0;
     for(let k=0;k<K;k++)sumW+=W[k];
     // trace(W - W*X*(X'WX)^-1*X'W) = sum(W) - trace(XtWX_inv * XtW * W * X)
     // Simplified: C = sumW - trace(...)
-    const WX=matMul(Wmat,X);
-    const H=matMul(matMul(X,XtWXinv),Xt);// Hat matrix without W
+    const H=matMul(matMul(X,XtWXinv),Xt);// Hat matrix without W: X (X'WX)^-1 X'
     let trHW=0;
-    for(let k=0;k<K;k++)trHW+=H[k][k]*W[k]*W[k]/W[k];// simplified
+    // trace(W H W) = sum_k W[k]^2 * H[k][k]  (Jackson et al. 2010 generalized DL)
+    for(let k=0;k<K;k++)trHW+=H[k][k]*W[k]*W[k];
     const C=sumW-trHW;
     tau2=C>0?Math.max(0,(Q-df)/C):0;
   }
@@ -2501,10 +2501,10 @@ function renderMetaRegression(){
   if(dfReg>0&&Qreg>dfReg){
     let sumW=0;
     for(let k=0;k<K;k++)sumW+=W[k];
-    const WX=matMul(Wmat,Xext);
-    const H=matMul(matMul(Xext,XtWXinv),Xt);
+    const H=matMul(matMul(Xext,XtWXinv),Xt);// X (X'WX)^-1 X'
     let trHW=0;
-    for(let k=0;k<K;k++)trHW+=H[k][k]*W[k];
+    // trace(W H W) = sum_k W[k]^2 * H[k][k]  (generalized DL)
+    for(let k=0;k<K;k++)trHW+=H[k][k]*W[k]*W[k];
     const C=sumW-trHW;
     tau2Reg=C>0?Math.max(0,(Qreg-dfReg)/C):0;
   }
