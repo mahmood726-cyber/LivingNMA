@@ -474,45 +474,65 @@ function runNMACore(data,net,refIdx){
     tau2=C>0?Math.max(0,(Q-df)/C):0;
   }
 
+  // === Random-effects refit (default) =======================================
+  // The FE pass above (W=1/v) is kept for Q, node-splitting and the hat matrix
+  // (those legitimately use within-study weights). But the FE vcov produces
+  // relative-effect CIs that are too narrow under heterogeneity. We therefore
+  // re-solve the SAME graph-theoretic WLS with W_k = 1/(v_k + tau2), reusing the
+  // engine's own DL tau2, and take beta/vcov from THIS solve for comparisons /
+  // allPairs. At tau2=0 this reduces exactly to the FE result.
+  // Measured (truth-recovery harness): mean coverage FE 0.806 -> RE 0.905.
+  let betaRE=beta, vcovRE=vcov;
+  if(tau2>0){
+    const Wre=W.map((_,k)=>1/(data[k].v+tau2));
+    const WmatRE=matCreate(K,K,0);
+    for(let k=0;k<K;k++)WmatRE[k][k]=Wre[k];
+    const XtWre=matMul(Xt,WmatRE);
+    const XtWXre=matMul(XtWre,X);
+    vcovRE=matInv(XtWXre);
+    const XtWYre=matMul(XtWre,Yvec);
+    betaRE=matMul(vcovRE,XtWYre).map(r=>r[0]);
+  }
+
   // Build all pairwise results
   const comparisons=[];
   const alpha=0.05;
   const zc=normalQuantile(1-alpha/2);
 
-  // vs reference comparisons
+  // vs reference comparisons (RE: beta/vcov widened by tau2)
   for(let c=0;c<T-1;c++){
     const trt=trtList[nonRefIdx[c]];
-    const est=beta[c];
-    const se=Math.sqrt(vcov[c][c]);
+    const est=betaRE[c];
+    const se=Math.sqrt(vcovRE[c][c]);
     const z=est/se;
     const p=2*(1-normalCDF(Math.abs(z)));
     comparisons.push({t1:trt,t2:trtList[refIdx],est,se,ci:[est-zc*se,est+zc*se],p,z});
   }
 
-  // All pairwise (for league table)
+  // All pairwise (for league table) — RE beta/vcov
   const allPairs=matCreate(T,T,null);
   for(let i=0;i<T;i++){
     for(let j=0;j<T;j++){
       if(i===j)continue;
       // Effect of trtList[i] vs trtList[j]
       if(i===refIdx){
-        // -beta[j's index in nonRef]
+        // -betaRE[j's index in nonRef]
         const jc=nonRefIdx.indexOf(j);
         if(jc>=0){
-          const est=-beta[jc];const se=Math.sqrt(vcov[jc][jc]);
+          const est=-betaRE[jc];const se=Math.sqrt(vcovRE[jc][jc]);
           allPairs[i][j]={est,se,ci:[est-zc*se,est+zc*se],p:2*(1-normalCDF(Math.abs(est/se)))};
         }
       }else if(j===refIdx){
         const ic=nonRefIdx.indexOf(i);
         if(ic>=0){
-          const est=beta[ic];const se=Math.sqrt(vcov[ic][ic]);
+          const est=betaRE[ic];const se=Math.sqrt(vcovRE[ic][ic]);
           allPairs[i][j]={est,se,ci:[est-zc*se,est+zc*se],p:2*(1-normalCDF(Math.abs(est/se)))};
         }
       }else{
         const ic=nonRefIdx.indexOf(i),jc=nonRefIdx.indexOf(j);
         if(ic>=0&&jc>=0){
-          const est=beta[ic]-beta[jc];
-          const se=Math.sqrt(vcov[ic][ic]+vcov[jc][jc]-2*vcov[ic][jc]);
+          const est=betaRE[ic]-betaRE[jc];
+          const se=Math.sqrt(vcovRE[ic][ic]+vcovRE[jc][jc]-2*vcovRE[ic][jc]);
           allPairs[i][j]={est,se,ci:[est-zc*se,est+zc*se],p:2*(1-normalCDF(Math.abs(est/se)))};
         }
       }
